@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Graphode.BillingEntitlementsService.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Graphode.BillingEntitlementsService.Contracts\Graphode.BillingEntitlementsService.Contracts.csproj" />
+    <ProjectReference Include="..\Graphode.BillingEntitlementsService.Application\Graphode.BillingEntitlementsService.Application.csproj" />
+    <ProjectReference Include="..\Graphode.BillingEntitlementsService.Infrastructure\Graphode.BillingEntitlementsService.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

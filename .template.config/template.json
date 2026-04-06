@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Graphode-AI",
+  "classifications": [
+    "Graphode",
+    "Microservice",
+    ".NET 10",
+    "API"
+  ],
+  "identity": "Graphode.Canonical.DotNetSkeleton",
+  "name": "Graphode Canonical Microservice Baseline",
+  "shortName": "graphode-microservice",
+  "preferNameDirectory": true,
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "exclude": [
+        "**/[Bb]in/**",
+        "**/[Oo]bj/**",
+        ".git/**",
+        ".terraform/**",
+        "deploy/terraform/.terraform/**"
+      ]
+    }
+  ],
+  "symbols": {
+    "ServiceName": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "Graphode.BillingEntitlementsService",
+      "replaces": "Graphode.BillingEntitlementsService",
+      "fileRename": "Graphode.BillingEntitlementsService",
+      "description": "Service solution/repository name."
+    },
+    "RootNamespace": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "Graphode.BillingEntitlementsService",
+      "replaces": "Graphode.BillingEntitlementsService",
+      "fileRename": "Graphode.BillingEntitlementsService",
+      "description": "Root namespace for the generated service."
+    },
+    "ContractsNamespace": {
+      "type": "generated",
+      "generator": "regex",
+      "parameters": {
+        "source": "RootNamespace",
+        "steps": [
+          {
+            "regex": "$",
+            "replacement": ".Contracts"
+          }
+        ]
+      },
+      "replaces": "Graphode.BillingEntitlementsService.Contracts",
+      "fileRename": "Graphode.BillingEntitlementsService.Contracts"
+    },
+    "ContractGeneratorNamespace": {
+      "type": "generated",
+      "generator": "regex",
+      "parameters": {
+        "source": "RootNamespace",
+        "steps": [
+          {
+            "regex": "$",
+            "replacement": ".ContractGenerator"
+          }
+        ]
+      },
+      "replaces": "Graphode.BillingEntitlementsService.ContractGenerator",
+      "fileRename": "Graphode.BillingEntitlementsService.ContractGenerator"
+    },
+    "ServiceSlug": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "billing-entitlements-service",
+      "replaces": "billing-entitlements-service",
+      "fileRename": "billing-entitlements-service",
+      "description": "Optional service slug/identifier used in chart names, queue names and service identity values."
+    }
+  },
+  "primaryOutputs": [
+    {
+      "path": "Graphode.BillingEntitlementsService.slnx"
+    },
+    {
+      "path": "README.md"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+digitalocean_token         = "set-me"
+kubeconfig_path            = "~/.kube/graphode-do.yaml"
+namespace                  = "graphode-dev"
+release_name               = "billing-entitlements-service"
+image_repository           = "ghcr.io/graphode-ai/canonical-dotnet-skeleton/billing-entitlements-service"
+image_tag                  = "main"
+mongo_existing_secret_name = "graphode-reference-mongo"
+rabbit_existing_secret_name = "graphode-reference-rabbit"
+redis_existing_secret_name = "graphode-reference-redis"
+
+internal_service_map = {
+  identity  = "http://graphode-identity.graphode.svc.cluster.local"
+  workspace = "http://graphode-workspace.graphode.svc.cluster.local"
+}

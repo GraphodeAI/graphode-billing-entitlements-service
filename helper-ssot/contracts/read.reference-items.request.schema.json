@@ -1,0 +1,124 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "ListReferenceItemsRequest",
+  "definitions": {
+    "SortDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "$ref": "#/definitions/SortDirection"
+        }
+      }
+    },
+    "SortDirection": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "Asc",
+        "Desc"
+      ],
+      "enum": [
+        "asc",
+        "desc"
+      ]
+    },
+    "FilterDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operator": {
+          "$ref": "#/definitions/FilterOperator"
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "FilterOperator": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "Eq",
+        "Ne",
+        "Contains",
+        "StartsWith",
+        "In",
+        "Gt",
+        "Gte",
+        "Lt",
+        "Lte"
+      ],
+      "enum": [
+        "eq",
+        "ne",
+        "contains",
+        "startsWith",
+        "in",
+        "gt",
+        "gte",
+        "lt",
+        "lte"
+      ]
+    },
+    "PageRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "maximum": 2147483647.0,
+          "minimum": 1.0
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "maximum": 200.0,
+          "minimum": 1.0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/definitions/PageRequest"
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sort": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SortDescriptor"
+          }
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FilterDescriptor"
+          }
+        }
+      }
+    }
+  ]
+}

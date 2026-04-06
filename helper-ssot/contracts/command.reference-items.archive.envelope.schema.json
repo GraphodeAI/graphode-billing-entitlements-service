@@ -1,0 +1,122 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "CommandEnvelopeOfArchiveReferenceItemCommandPayload",
+  "definitions": {
+    "MessageEnvelopeOfArchiveReferenceItemCommandPayload": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "correlation": {
+          "$ref": "#/definitions/CorrelationContext"
+        },
+        "actor": {
+          "$ref": "#/definitions/ActorContext"
+        },
+        "workspace": {
+          "$ref": "#/definitions/WorkspaceContext"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "payload": {
+          "$ref": "#/definitions/ArchiveReferenceItemCommandPayload"
+        }
+      }
+    },
+    "CorrelationContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "correlationId": {
+          "type": "string"
+        },
+        "causationId": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "timestampUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "ActorContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actorId": {
+          "type": "string"
+        },
+        "actorType": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "WorkspaceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspaceId": {
+          "type": "string"
+        },
+        "tenantId": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "ArchiveReferenceItemCommandPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "referenceItemId": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/definitions/MessageEnvelopeOfArchiveReferenceItemCommandPayload"
+    },
+    {
+      "type": "object",
+      "additionalProperties": false
+    }
+  ]
+}

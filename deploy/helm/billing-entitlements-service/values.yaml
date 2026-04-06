@@ -1,0 +1,79 @@
+# -- Override chart name.
+nameOverride: ""
+
+# -- Override fully qualified release name.
+fullnameOverride: ""
+
+image:
+  # -- Container image repository.
+  repository: ghcr.io/graphode-ai/canonical-dotnet-skeleton/billing-entitlements-service
+  # -- Container image tag.
+  tag: "latest"
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+service:
+  # -- Internal-only service type.
+  type: ClusterIP
+  # -- Public service port.
+  port: 8080
+  # -- Container target port.
+  targetPort: 8080
+
+ingress:
+  # -- Keep disabled by default because API Gateway is the public ingress.
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+replicaCount: 2
+
+podAnnotations: {}
+
+podLabels: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+env:
+  ASPNETCORE_URLS: http://+:8080
+  ServiceIdentity__ServiceName: graphode-billing-entitlements-service
+  ServiceIdentity__ServiceVersion: "1.0.0"
+  ServiceIdentity__Environment: Production
+  MongoDb__DatabaseName: graphode_reference
+  RabbitMq__CommandExchange: graphode.commands
+  RabbitMq__EventExchange: graphode.events
+  RabbitMq__PemExchange: graphode.pem
+  RabbitMq__CommandQueue: graphode.billing-entitlements-service.commands
+  Redis__InstanceName: "graphode:"
+
+configRefs:
+  # -- Optional existing ConfigMap names to import.
+  existingConfigMaps: []
+
+secretRefs:
+  # -- Optional existing Secret names to import.
+  existingSecrets: []
+
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 20
+    periodSeconds: 20
+  readiness:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

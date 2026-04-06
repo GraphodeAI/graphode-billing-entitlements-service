@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Graphode.BillingEntitlementsService.ContractGenerator/Graphode.BillingEntitlementsService.ContractGenerator.csproj" />
+    <Project Path="src/Graphode.BillingEntitlementsService.Contracts/Graphode.BillingEntitlementsService.Contracts.csproj" />
+    <Project Path="src/Graphode.BillingEntitlementsService.Api/Graphode.BillingEntitlementsService.Api.csproj" />
+    <Project Path="src/Graphode.BillingEntitlementsService.Application/Graphode.BillingEntitlementsService.Application.csproj" />
+    <Project Path="src/Graphode.BillingEntitlementsService.Domain/Graphode.BillingEntitlementsService.Domain.csproj" />
+    <Project Path="src/Graphode.BillingEntitlementsService.Infrastructure/Graphode.BillingEntitlementsService.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Graphode.BillingEntitlementsService.Tests/Graphode.BillingEntitlementsService.Tests.csproj" />
+  </Folder>
+</Solution>

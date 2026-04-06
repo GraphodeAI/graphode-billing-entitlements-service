@@ -1,0 +1,27 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "ReferenceItemArchivedEventPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "referenceItemId": {
+      "type": "string"
+    },
+    "workspaceId": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "reason": {
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    "archivedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

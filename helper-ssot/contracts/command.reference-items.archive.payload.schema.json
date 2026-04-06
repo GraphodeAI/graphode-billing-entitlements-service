@@ -1,0 +1,20 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "ArchiveReferenceItemCommandPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "referenceItemId": {
+      "type": "string"
+    },
+    "workspaceId": {
+      "type": "string"
+    },
+    "reason": {
+      "type": [
+        "null",
+        "string"
+      ]
+    }
+  }
+}

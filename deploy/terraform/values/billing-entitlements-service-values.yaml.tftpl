@@ -1,0 +1,16 @@
+image:
+  repository: ${image_repository}
+  tag: ${image_tag}
+
+env:
+  ASPNETCORE_URLS: http://+:8080
+  ServiceIdentity__ServiceName: ${service_name}
+  ServiceIdentity__ServiceVersion: "1.0.0"
+  ServiceIdentity__Environment: Production
+  InternalServices__Services__identity: ""
+
+secretRefs:
+  existingSecrets:
+    - ${mongo_secret_name}
+    - ${rabbit_secret_name}
+    - ${redis_secret_name}

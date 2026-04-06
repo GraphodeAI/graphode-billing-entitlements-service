@@ -1,0 +1,149 @@
+﻿{
+  "catalog": "graphode-baseline-contracts",
+  "description": "Baseline-local machine-readable contract catalog for the canonical Graphode .NET skeleton.",
+  "artifacts": [
+    {
+      "contractId": "command.reference-items.archive.envelope",
+      "category": "command",
+      "subject": "reference-items.archive",
+      "artifactKind": "envelope",
+      "fileName": "command.reference-items.archive.envelope.schema.json",
+      "description": "Archive command envelope.",
+      "schemaTitle": "CommandEnvelopeOfArchiveReferenceItemCommandPayload",
+      "typeName": "CommandEnvelope\u003CArchiveReferenceItemCommandPayload\u003E",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.Messaging.CommandEnvelope\u00601[[Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ArchiveReferenceItemCommandPayload, Graphode.BillingEntitlementsService.Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]"
+    },
+    {
+      "contractId": "command.reference-items.archive.payload",
+      "category": "command",
+      "subject": "reference-items.archive",
+      "artifactKind": "payload",
+      "fileName": "command.reference-items.archive.payload.schema.json",
+      "description": "Archive command payload.",
+      "schemaTitle": "ArchiveReferenceItemCommandPayload",
+      "typeName": "ArchiveReferenceItemCommandPayload",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ArchiveReferenceItemCommandPayload"
+    },
+    {
+      "contractId": "command.reference-items.archive.request",
+      "category": "command",
+      "subject": "reference-items.archive",
+      "artifactKind": "request",
+      "fileName": "command.reference-items.archive.request.schema.json",
+      "description": "REST request that dispatches an archive command.",
+      "schemaTitle": "ArchiveReferenceItemCommandRequest",
+      "typeName": "ArchiveReferenceItemCommandRequest",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ArchiveReferenceItemCommandRequest"
+    },
+    {
+      "contractId": "event.reference-items.archived.envelope",
+      "category": "event",
+      "subject": "reference-items.archived",
+      "artifactKind": "envelope",
+      "fileName": "event.reference-items.archived.envelope.schema.json",
+      "description": "Reference item archived event envelope.",
+      "schemaTitle": "EventEnvelopeOfReferenceItemArchivedEventPayload",
+      "typeName": "EventEnvelope\u003CReferenceItemArchivedEventPayload\u003E",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.Messaging.EventEnvelope\u00601[[Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ReferenceItemArchivedEventPayload, Graphode.BillingEntitlementsService.Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]"
+    },
+    {
+      "contractId": "event.reference-items.archived.payload",
+      "category": "event",
+      "subject": "reference-items.archived",
+      "artifactKind": "payload",
+      "fileName": "event.reference-items.archived.payload.schema.json",
+      "description": "Reference item archived event payload.",
+      "schemaTitle": "ReferenceItemArchivedEventPayload",
+      "typeName": "ReferenceItemArchivedEventPayload",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ReferenceItemArchivedEventPayload"
+    },
+    {
+      "contractId": "event.reference-items.created.envelope",
+      "category": "event",
+      "subject": "reference-items.created",
+      "artifactKind": "envelope",
+      "fileName": "event.reference-items.created.envelope.schema.json",
+      "description": "Reference item created event envelope.",
+      "schemaTitle": "EventEnvelopeOfReferenceItemCreatedEventPayload",
+      "typeName": "EventEnvelope\u003CReferenceItemCreatedEventPayload\u003E",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.Messaging.EventEnvelope\u00601[[Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ReferenceItemCreatedEventPayload, Graphode.BillingEntitlementsService.Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]"
+    },
+    {
+      "contractId": "event.reference-items.created.payload",
+      "category": "event",
+      "subject": "reference-items.created",
+      "artifactKind": "payload",
+      "fileName": "event.reference-items.created.payload.schema.json",
+      "description": "Reference item created event payload.",
+      "schemaTitle": "ReferenceItemCreatedEventPayload",
+      "typeName": "ReferenceItemCreatedEventPayload",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ReferenceItemCreatedEventPayload"
+    },
+    {
+      "contractId": "pem.reference-items.platform-event-model.envelope",
+      "category": "pem",
+      "subject": "reference-items.platform-event-model",
+      "artifactKind": "envelope",
+      "fileName": "pem.reference-items.platform-event-model.envelope.schema.json",
+      "description": "Platform Event Model envelope.",
+      "schemaTitle": "PemEnvelopeOfReferenceItemPlatformEventModelPayload",
+      "typeName": "PemEnvelope\u003CReferenceItemPlatformEventModelPayload\u003E",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.Messaging.PemEnvelope\u00601[[Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ReferenceItemPlatformEventModelPayload, Graphode.BillingEntitlementsService.Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]"
+    },
+    {
+      "contractId": "pem.reference-items.platform-event-model.payload",
+      "category": "pem",
+      "subject": "reference-items.platform-event-model",
+      "artifactKind": "payload",
+      "fileName": "pem.reference-items.platform-event-model.payload.schema.json",
+      "description": "Platform Event Model payload.",
+      "schemaTitle": "ReferenceItemPlatformEventModelPayload",
+      "typeName": "ReferenceItemPlatformEventModelPayload",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ReferenceItemPlatformEventModelPayload"
+    },
+    {
+      "contractId": "read.reference-items.request",
+      "category": "read",
+      "subject": "reference-items",
+      "artifactKind": "request",
+      "fileName": "read.reference-items.request.schema.json",
+      "description": "Read request with paging, sorting and filtering.",
+      "schemaTitle": "ListReferenceItemsRequest",
+      "typeName": "ListReferenceItemsRequest",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ListReferenceItemsRequest"
+    },
+    {
+      "contractId": "read.reference-items.response",
+      "category": "read",
+      "subject": "reference-items",
+      "artifactKind": "response",
+      "fileName": "read.reference-items.response.schema.json",
+      "description": "Read response page for reference items.",
+      "schemaTitle": "ListReferenceItemsResponse",
+      "typeName": "ListReferenceItemsResponse",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.ListReferenceItemsResponse"
+    },
+    {
+      "contractId": "write.reference-items.create.request",
+      "category": "write",
+      "subject": "reference-items.create",
+      "artifactKind": "request",
+      "fileName": "write.reference-items.create.request.schema.json",
+      "description": "Synchronous write request payload.",
+      "schemaTitle": "CreateReferenceItemRequest",
+      "typeName": "CreateReferenceItemRequest",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.CreateReferenceItemRequest"
+    },
+    {
+      "contractId": "write.reference-items.create.response",
+      "category": "write",
+      "subject": "reference-items.create",
+      "artifactKind": "response",
+      "fileName": "write.reference-items.create.response.schema.json",
+      "description": "Synchronous write response payload.",
+      "schemaTitle": "CreateReferenceItemResponse",
+      "typeName": "CreateReferenceItemResponse",
+      "clrType": "Graphode.BillingEntitlementsService.Contracts.ReferenceItems.CreateReferenceItemResponse"
+    }
+  ]
+}

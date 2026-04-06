@@ -1,0 +1,96 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "ListReferenceItemsResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReferenceItemListItemResponse"
+      }
+    },
+    "totalCount": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "page": {
+      "$ref": "#/definitions/PageMetadata"
+    }
+  },
+  "definitions": {
+    "ReferenceItemListItemResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAtUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAtUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "archivedAtUtc": {
+          "type": [
+            "null",
+            "string"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "PageMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "totalCount": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "totalPages": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "hasNextPage": {
+          "type": "boolean"
+        },
+        "hasPreviousPage": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

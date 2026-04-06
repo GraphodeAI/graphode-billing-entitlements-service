@@ -1,0 +1,27 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "ArchiveReferenceItemCommandRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "referenceItemId",
+    "workspaceId"
+  ],
+  "properties": {
+    "referenceItemId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": [
+        "null",
+        "string"
+      ],
+      "maxLength": 256
+    }
+  }
+}

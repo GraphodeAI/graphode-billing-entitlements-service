@@ -1,0 +1,129 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "EventEnvelopeOfReferenceItemArchivedEventPayload",
+  "definitions": {
+    "MessageEnvelopeOfReferenceItemArchivedEventPayload": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "correlation": {
+          "$ref": "#/definitions/CorrelationContext"
+        },
+        "actor": {
+          "$ref": "#/definitions/ActorContext"
+        },
+        "workspace": {
+          "$ref": "#/definitions/WorkspaceContext"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "payload": {
+          "$ref": "#/definitions/ReferenceItemArchivedEventPayload"
+        }
+      }
+    },
+    "CorrelationContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "correlationId": {
+          "type": "string"
+        },
+        "causationId": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "timestampUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "ActorContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actorId": {
+          "type": "string"
+        },
+        "actorType": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "WorkspaceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspaceId": {
+          "type": "string"
+        },
+        "tenantId": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "ReferenceItemArchivedEventPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "referenceItemId": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "archivedAtUtc": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/definitions/MessageEnvelopeOfReferenceItemArchivedEventPayload"
+    },
+    {
+      "type": "object",
+      "additionalProperties": false
+    }
+  ]
+}

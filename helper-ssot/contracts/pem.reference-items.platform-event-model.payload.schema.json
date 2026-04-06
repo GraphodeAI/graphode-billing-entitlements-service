@@ -1,0 +1,36 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "ReferenceItemPlatformEventModelPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "referenceItemId": {
+      "type": "string"
+    },
+    "workspaceId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "description": {
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "occurredAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
