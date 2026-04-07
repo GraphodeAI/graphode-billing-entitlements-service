@@ -49,6 +49,12 @@ public sealed record WorkspaceBillingViewResponse(
     SubscriptionResponse? Subscription,
     BillingPlansResponse Plans);
 
+public sealed record WorkspaceLedgerViewResponse(
+    BillingAccountResponse Account,
+    WalletBalanceResponse Wallet,
+    BudgetPolicyResponse Policy,
+    IReadOnlyList<LedgerEntryResponse> LedgerEntries);
+
 public sealed record StartSubscriptionCommandRequest(
     string PlanKey,
     BillingInterval BillingInterval,
@@ -61,3 +67,51 @@ public sealed record ChangeSubscriptionCommandRequest(
 
 public sealed record CancelSubscriptionCommandRequest(
     string? Reason);
+
+public sealed record ReserveCreditsCommandRequest(
+    decimal Amount,
+    string ReferenceId,
+    string? ProjectId,
+    string? UserId,
+    string? AllocationId);
+
+public sealed record CommitCreditsCommandRequest(
+    decimal Amount,
+    string ReferenceId,
+    string? ProjectId,
+    string? UserId,
+    string? AllocationId);
+
+public sealed record ReleaseCreditsCommandRequest(
+    decimal Amount,
+    string ReferenceId,
+    string? ProjectId,
+    string? UserId,
+    string? AllocationId);
+
+public sealed record WalletBalanceResponse(
+    decimal AvailableCredits,
+    decimal ReservedCredits,
+    string Currency,
+    DateTimeOffset UpdatedAtUtc);
+
+public sealed record BudgetPolicyResponse(
+    string ScopeType,
+    string ScopeRefId,
+    string Category,
+    string Period,
+    decimal LimitAmount,
+    string EnforcementMode,
+    DateTimeOffset CreatedAtUtc);
+
+public sealed record LedgerEntryResponse(
+    string LedgerEntryId,
+    string BillingAccountId,
+    LedgerEntryType Type,
+    decimal Amount,
+    string Currency,
+    string ReferenceId,
+    string? ProjectId,
+    string? UserId,
+    string? AllocationId,
+    DateTimeOffset CreatedAtUtc);

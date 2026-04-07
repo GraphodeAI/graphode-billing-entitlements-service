@@ -62,6 +62,15 @@ app.MapGet("/api/v1/workspaces/{workspaceId}/billing-account", async (
     return Results.Ok(response);
 });
 
+app.MapGet("/api/v1/workspaces/{workspaceId}/billing/ledger", async (
+    string workspaceId,
+    BillingWorkspaceService service,
+    CancellationToken cancellationToken) =>
+{
+    var response = await service.GetWorkspaceLedgerViewAsync(workspaceId, cancellationToken);
+    return Results.Ok(response);
+});
+
 app.MapPost("/api/v1/workspaces/{workspaceId}/billing/subscription/start", async (
     string workspaceId,
     StartSubscriptionCommandRequest request,
@@ -110,6 +119,87 @@ app.MapPost("/api/v1/workspaces/{workspaceId}/billing/subscription/cancel", asyn
 {
     var response = await service.CancelSubscriptionAsync(workspaceId, request, cancellationToken);
     return Results.Ok(response);
+});
+
+app.MapPost("/api/v1/workspaces/{workspaceId}/billing/ledger/reserve", async (
+    string workspaceId,
+    ReserveCreditsCommandRequest request,
+    BillingWorkspaceService service,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var response = await service.ReserveCreditsAsync(workspaceId, request, cancellationToken);
+        return Results.Ok(response);
+    }
+    catch (ArgumentOutOfRangeException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["reserveCredits"] = new[] { exception.Message }
+        });
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["reserveCredits"] = new[] { exception.Message }
+        });
+    }
+});
+
+app.MapPost("/api/v1/workspaces/{workspaceId}/billing/ledger/commit", async (
+    string workspaceId,
+    CommitCreditsCommandRequest request,
+    BillingWorkspaceService service,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var response = await service.CommitCreditsAsync(workspaceId, request, cancellationToken);
+        return Results.Ok(response);
+    }
+    catch (ArgumentOutOfRangeException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["commitCredits"] = new[] { exception.Message }
+        });
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["commitCredits"] = new[] { exception.Message }
+        });
+    }
+});
+
+app.MapPost("/api/v1/workspaces/{workspaceId}/billing/ledger/release", async (
+    string workspaceId,
+    ReleaseCreditsCommandRequest request,
+    BillingWorkspaceService service,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var response = await service.ReleaseCreditsAsync(workspaceId, request, cancellationToken);
+        return Results.Ok(response);
+    }
+    catch (ArgumentOutOfRangeException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["releaseCredits"] = new[] { exception.Message }
+        });
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["releaseCredits"] = new[] { exception.Message }
+        });
+    }
 });
 
 app.Run();

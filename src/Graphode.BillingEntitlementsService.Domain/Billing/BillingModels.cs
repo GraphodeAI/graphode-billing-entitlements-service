@@ -48,6 +48,15 @@ public enum BudgetBehavior
     AllowOverage = 1
 }
 
+public enum LedgerEntryType
+{
+    CreditGrant = 0,
+    UsageReserve = 1,
+    UsageCommit = 2,
+    UsageRelease = 3,
+    Adjustment = 4
+}
+
 public sealed record BillingEntitlements(
     int MaxProjects,
     int MaxMembers,
@@ -65,6 +74,33 @@ public sealed record PlanDefinition(
     BillingEntitlements Entitlements,
     BudgetBehavior DefaultBudgetBehavior,
     bool Recommended);
+
+public sealed record WalletBalance(
+    decimal AvailableCredits,
+    decimal ReservedCredits,
+    string Currency,
+    DateTimeOffset UpdatedAtUtc);
+
+public sealed record LedgerEntry(
+    string LedgerEntryId,
+    string BillingAccountId,
+    LedgerEntryType Type,
+    decimal Amount,
+    string Currency,
+    string ReferenceId,
+    string? ProjectId,
+    string? UserId,
+    string? AllocationId,
+    DateTimeOffset CreatedAtUtc);
+
+public sealed record BudgetPolicy(
+    string ScopeType,
+    string ScopeRefId,
+    string Category,
+    string Period,
+    decimal LimitAmount,
+    string EnforcementMode,
+    DateTimeOffset CreatedAtUtc);
 
 public sealed class BillingAccount
 {
@@ -143,6 +179,29 @@ public sealed class BillingAccount
     public void Cancel()
     {
         Status = BillingAccountStatus.Cancelled;
+    }
+
+    public void SyncWallet(WalletBalance walletBalance)
+    {
+        CreditBalance = walletBalance.AvailableCredits;
+        ReservedCreditBalance = walletBalance.ReservedCredits;
+    }
+
+    public void ReserveCredits(decimal amount)
+    {
+        CreditBalance -= amount;
+        ReservedCreditBalance += amount;
+    }
+
+    public void CommitCredits(decimal amount)
+    {
+        ReservedCreditBalance -= amount;
+    }
+
+    public void ReleaseCredits(decimal amount)
+    {
+        CreditBalance += amount;
+        ReservedCreditBalance -= amount;
     }
 }
 
