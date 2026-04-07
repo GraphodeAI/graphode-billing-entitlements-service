@@ -10,9 +10,11 @@ public interface IBillingCatalogStore
     IReadOnlyList<PlanDefinition> ListPlans();
     WorkspaceBillingViewResponse GetWorkspaceBillingView(string workspaceId);
     WorkspaceLedgerViewResponse GetWorkspaceLedgerView(string workspaceId);
+    WorkspacePaymentMethodsResponse GetWorkspacePaymentMethods(string workspaceId);
     WorkspaceBillingViewResponse StartSubscription(string workspaceId, StartSubscriptionCommandRequest request);
     WorkspaceBillingViewResponse ChangeSubscription(string workspaceId, ChangeSubscriptionCommandRequest request);
     WorkspaceBillingViewResponse CancelSubscription(string workspaceId, CancelSubscriptionCommandRequest request);
+    WorkspacePaymentMethodsResponse CapturePaymentMethod(string workspaceId, SetupPaymentMethodCommandRequest request);
     WorkspaceLedgerViewResponse ReserveCredits(string workspaceId, ReserveCreditsCommandRequest request);
     WorkspaceLedgerViewResponse CommitCredits(string workspaceId, CommitCreditsCommandRequest request);
     WorkspaceLedgerViewResponse ReleaseCredits(string workspaceId, ReleaseCreditsCommandRequest request);
@@ -25,6 +27,7 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
     private readonly ConcurrentDictionary<string, WalletBalance> _walletBalances = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, BudgetPolicy> _budgetPolicies = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, ConcurrentQueue<LedgerEntry>> _ledgerEntries = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, List<PaymentMethodRef>> _paymentMethods = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, object> _accountLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly IReadOnlyList<PlanDefinition> _plans = BillingSeed.Plans;
 
@@ -42,6 +45,12 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
     {
         var account = GetOrCreateAccount(workspaceId);
         return ToLedgerResponse(account);
+    }
+
+    public WorkspacePaymentMethodsResponse GetWorkspacePaymentMethods(string workspaceId)
+    {
+        var account = GetOrCreateAccount(workspaceId);
+        return ToPaymentMethodsResponse(account);
     }
 
     public WorkspaceBillingViewResponse StartSubscription(string workspaceId, StartSubscriptionCommandRequest request)
@@ -102,6 +111,50 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
             account.Cancel();
 
             return ToResponse(account, existing);
+        }
+    }
+
+    public WorkspacePaymentMethodsResponse CapturePaymentMethod(string workspaceId, SetupPaymentMethodCommandRequest request)
+    {
+        ValidatePaymentMethodRequest(request);
+        var lockHandle = GetAccountLock(workspaceId);
+        lock (lockHandle)
+        {
+            var account = GetOrCreateAccount(workspaceId);
+            var paymentMethods = _paymentMethods.GetOrAdd(account.BillingAccountId, _ => new List<PaymentMethodRef>());
+            var now = DateTimeOffset.UtcNow;
+            var paymentMethodRefId = $"pmr_{Guid.NewGuid():N}";
+            var stripePaymentMethodId = $"pm_{account.BillingAccountId}_{paymentMethods.Count + 1}";
+            var shouldBeDefault = request.IsDefault || paymentMethods.Count == 0 || account.DefaultPaymentMethodRefId is null;
+
+            if (shouldBeDefault)
+            {
+                for (var index = 0; index < paymentMethods.Count; index++)
+                {
+                    paymentMethods[index] = paymentMethods[index] with { IsDefault = false };
+                }
+            }
+
+            var paymentMethod = new PaymentMethodRef(
+                paymentMethodRefId,
+                account.BillingAccountId,
+                stripePaymentMethodId,
+                request.Type.Trim(),
+                string.IsNullOrWhiteSpace(request.Brand) ? null : request.Brand.Trim(),
+                string.IsNullOrWhiteSpace(request.Last4) ? null : request.Last4.Trim(),
+                request.ExpMonth,
+                request.ExpYear,
+                shouldBeDefault,
+                PaymentMethodRefStatus.Active,
+                now);
+
+            paymentMethods.Add(paymentMethod);
+            if (shouldBeDefault)
+            {
+                account.SetDefaultPaymentMethod(paymentMethod.PaymentMethodRefId);
+            }
+
+            return ToPaymentMethodsResponse(account);
         }
     }
 
@@ -214,6 +267,7 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
                     : BillingSharedPoolMode.None,
                 creditBalance: plan.IncludedCredits,
                 reservedCreditBalance: 0,
+                defaultPaymentMethodRefId: null,
                 allocationPolicyId: ownerScopeType == BillingAccountOwnerScopeType.OrganizationWorkspace ? $"cap_{key}" : null,
                 createdAtUtc: now);
 
@@ -273,6 +327,7 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
         _walletBalances[account.BillingAccountId] = wallet;
         _budgetPolicies[account.BillingAccountId] = BuildBudgetPolicy(account, plan, timestampUtc);
         _ledgerEntries.TryAdd(account.BillingAccountId, new ConcurrentQueue<LedgerEntry>());
+        _paymentMethods.TryAdd(account.BillingAccountId, new List<PaymentMethodRef>());
         account.SyncWallet(wallet);
     }
 
@@ -285,6 +340,7 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
         }
 
         _ledgerEntries.TryAdd(account.BillingAccountId, new ConcurrentQueue<LedgerEntry>());
+        _paymentMethods.TryAdd(account.BillingAccountId, new List<PaymentMethodRef>());
     }
 
     private PlanDefinition ResolveCurrentPlan(BillingAccount account) =>
@@ -359,11 +415,20 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
         return new WorkspaceLedgerViewResponse(MapAccount(account), MapWallet(wallet), MapPolicy(policy), ledgerEntries);
     }
 
+    private WorkspacePaymentMethodsResponse ToPaymentMethodsResponse(BillingAccount account)
+    {
+        var paymentMethods = _paymentMethods.TryGetValue(account.BillingAccountId, out var methods)
+            ? methods.OrderByDescending(method => method.CreatedAtUtc).Select(MapPaymentMethod).ToArray()
+            : Array.Empty<PaymentMethodRefResponse>();
+
+        return new WorkspacePaymentMethodsResponse(MapAccount(account), paymentMethods);
+    }
+
     private static BillingPlanResponse MapPlan(PlanDefinition plan) =>
         new(plan.PlanKey, plan.Version, plan.Family, plan.BillingInterval, plan.StripePriceId, plan.IncludedCredits, plan.Entitlements, plan.DefaultBudgetBehavior, plan.Recommended);
 
     private static BillingAccountResponse MapAccount(BillingAccount account) =>
-        new(account.BillingAccountId, account.WorkspaceId, account.OwnerScopeType, account.OwnerScopeId, account.Status, account.Currency, account.CurrentPlanKey, account.CurrentPlanVersion, account.CurrentSubscriptionId, account.SharedPoolMode, account.CreditBalance, account.ReservedCreditBalance, account.AllocationPolicyId, account.CreatedAtUtc);
+        new(account.BillingAccountId, account.WorkspaceId, account.OwnerScopeType, account.OwnerScopeId, account.Status, account.Currency, account.CurrentPlanKey, account.CurrentPlanVersion, account.CurrentSubscriptionId, account.SharedPoolMode, account.CreditBalance, account.ReservedCreditBalance, account.DefaultPaymentMethodRefId, account.AllocationPolicyId, account.CreatedAtUtc);
 
     private static WalletBalanceResponse MapWallet(WalletBalance wallet) =>
         new(wallet.AvailableCredits, wallet.ReservedCredits, wallet.Currency, wallet.UpdatedAtUtc);
@@ -373,6 +438,20 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
 
     private static SubscriptionResponse MapSubscription(Subscription subscription) =>
         new(subscription.SubscriptionId, subscription.BillingAccountId, subscription.Provider, subscription.ProviderSubscriptionId, subscription.Status, subscription.PlanKey, subscription.PlanVersion, subscription.BillingInterval, subscription.CurrentPeriodStartUtc, subscription.CurrentPeriodEndUtc, subscription.CancelAtPeriodEnd);
+
+    private static PaymentMethodRefResponse MapPaymentMethod(PaymentMethodRef paymentMethod) =>
+        new(
+            paymentMethod.PaymentMethodRefId,
+            paymentMethod.BillingAccountId,
+            paymentMethod.StripePaymentMethodId,
+            paymentMethod.Type,
+            paymentMethod.Brand,
+            paymentMethod.Last4,
+            paymentMethod.ExpMonth,
+            paymentMethod.ExpYear,
+            paymentMethod.IsDefault,
+            paymentMethod.Status,
+            paymentMethod.CreatedAtUtc);
 
     private void AppendLedgerEntry<TRequest>(
         BillingAccount account,
@@ -435,6 +514,29 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
         var accountId = $"ba_{workspaceId}";
         return _accountLocks.GetOrAdd(accountId, _ => new object());
     }
+
+    private static void ValidatePaymentMethodRequest(SetupPaymentMethodCommandRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Type))
+        {
+            throw new ArgumentException("Payment method type is required.", nameof(request.Type));
+        }
+
+        if (request.ExpMonth.HasValue && (request.ExpMonth.Value < 1 || request.ExpMonth.Value > 12))
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.ExpMonth), "Expiry month must be between 1 and 12.");
+        }
+
+        if (request.ExpYear.HasValue && request.ExpYear.Value < DateTimeOffset.UtcNow.Year)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.ExpYear), "Expiry year must be a future year.");
+        }
+
+        if (request.Last4 is not null && request.Last4.Length != 4)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.Last4), "Last4 must contain exactly 4 digits.");
+        }
+    }
 }
 
 public sealed class BillingWorkspaceService
@@ -465,6 +567,12 @@ public sealed class BillingWorkspaceService
         return Task.FromResult(_store.GetWorkspaceLedgerView(workspaceId));
     }
 
+    public Task<WorkspacePaymentMethodsResponse> GetWorkspacePaymentMethodsAsync(string workspaceId, CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        return Task.FromResult(_store.GetWorkspacePaymentMethods(workspaceId));
+    }
+
     public Task<WorkspaceBillingViewResponse> StartSubscriptionAsync(string workspaceId, StartSubscriptionCommandRequest request, CancellationToken cancellationToken)
     {
         _ = cancellationToken;
@@ -481,6 +589,15 @@ public sealed class BillingWorkspaceService
     {
         _ = cancellationToken;
         return Task.FromResult(_store.CancelSubscription(workspaceId, request));
+    }
+
+    public Task<WorkspacePaymentMethodsResponse> CapturePaymentMethodAsync(
+        string workspaceId,
+        SetupPaymentMethodCommandRequest request,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        return Task.FromResult(_store.CapturePaymentMethod(workspaceId, request));
     }
 
     public Task<WorkspaceLedgerViewResponse> ReserveCreditsAsync(string workspaceId, ReserveCreditsCommandRequest request, CancellationToken cancellationToken)

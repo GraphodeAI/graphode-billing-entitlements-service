@@ -28,6 +28,7 @@ public sealed record BillingAccountResponse(
     BillingSharedPoolMode SharedPoolMode,
     decimal CreditBalance,
     decimal ReservedCreditBalance,
+    string? DefaultPaymentMethodRefId,
     string? AllocationPolicyId,
     DateTimeOffset CreatedAtUtc);
 
@@ -49,6 +50,23 @@ public sealed record WorkspaceBillingViewResponse(
     SubscriptionResponse? Subscription,
     BillingPlansResponse Plans);
 
+public sealed record PaymentMethodRefResponse(
+    string PaymentMethodRefId,
+    string BillingAccountId,
+    string StripePaymentMethodId,
+    string Type,
+    string? Brand,
+    string? Last4,
+    int? ExpMonth,
+    int? ExpYear,
+    bool IsDefault,
+    PaymentMethodRefStatus Status,
+    DateTimeOffset CreatedAtUtc);
+
+public sealed record WorkspacePaymentMethodsResponse(
+    BillingAccountResponse Account,
+    IReadOnlyList<PaymentMethodRefResponse> PaymentMethods);
+
 public sealed record WorkspaceLedgerViewResponse(
     BillingAccountResponse Account,
     WalletBalanceResponse Wallet,
@@ -67,6 +85,14 @@ public sealed record ChangeSubscriptionCommandRequest(
 
 public sealed record CancelSubscriptionCommandRequest(
     string? Reason);
+
+public sealed record SetupPaymentMethodCommandRequest(
+    string Type,
+    string? Brand,
+    string? Last4,
+    int? ExpMonth,
+    int? ExpYear,
+    bool IsDefault);
 
 public sealed record ReserveCreditsCommandRequest(
     decimal Amount,

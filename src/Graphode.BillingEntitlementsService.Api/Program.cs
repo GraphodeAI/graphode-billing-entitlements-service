@@ -71,6 +71,15 @@ app.MapGet("/api/v1/workspaces/{workspaceId}/billing/ledger", async (
     return Results.Ok(response);
 });
 
+app.MapGet("/api/v1/workspaces/{workspaceId}/billing/payment-methods", async (
+    string workspaceId,
+    BillingWorkspaceService service,
+    CancellationToken cancellationToken) =>
+{
+    var response = await service.GetWorkspacePaymentMethodsAsync(workspaceId, cancellationToken);
+    return Results.Ok(response);
+});
+
 app.MapPost("/api/v1/workspaces/{workspaceId}/billing/subscription/start", async (
     string workspaceId,
     StartSubscriptionCommandRequest request,
@@ -119,6 +128,33 @@ app.MapPost("/api/v1/workspaces/{workspaceId}/billing/subscription/cancel", asyn
 {
     var response = await service.CancelSubscriptionAsync(workspaceId, request, cancellationToken);
     return Results.Ok(response);
+});
+
+app.MapPost("/api/v1/workspaces/{workspaceId}/billing/payment-methods/setup-intent", async (
+    string workspaceId,
+    SetupPaymentMethodCommandRequest request,
+    BillingWorkspaceService service,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var response = await service.CapturePaymentMethodAsync(workspaceId, request, cancellationToken);
+        return Results.Ok(response);
+    }
+    catch (ArgumentOutOfRangeException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["setupPaymentMethod"] = new[] { exception.Message }
+        });
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["setupPaymentMethod"] = new[] { exception.Message }
+        });
+    }
 });
 
 app.MapPost("/api/v1/workspaces/{workspaceId}/billing/ledger/reserve", async (

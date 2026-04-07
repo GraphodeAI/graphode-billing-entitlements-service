@@ -42,6 +42,13 @@ public enum BillingSharedPoolMode
     WorkspaceSharedPool = 1
 }
 
+public enum PaymentMethodRefStatus
+{
+    Active = 0,
+    Detached = 1,
+    Expired = 2
+}
+
 public enum BudgetBehavior
 {
     PauseOnExhaust = 0,
@@ -93,6 +100,19 @@ public sealed record LedgerEntry(
     string? AllocationId,
     DateTimeOffset CreatedAtUtc);
 
+public sealed record PaymentMethodRef(
+    string PaymentMethodRefId,
+    string BillingAccountId,
+    string StripePaymentMethodId,
+    string Type,
+    string? Brand,
+    string? Last4,
+    int? ExpMonth,
+    int? ExpYear,
+    bool IsDefault,
+    PaymentMethodRefStatus Status,
+    DateTimeOffset CreatedAtUtc);
+
 public sealed record BudgetPolicy(
     string ScopeType,
     string ScopeRefId,
@@ -117,6 +137,7 @@ public sealed class BillingAccount
         BillingSharedPoolMode sharedPoolMode,
         decimal creditBalance,
         decimal reservedCreditBalance,
+        string? defaultPaymentMethodRefId,
         string? allocationPolicyId,
         DateTimeOffset createdAtUtc)
     {
@@ -132,6 +153,7 @@ public sealed class BillingAccount
         SharedPoolMode = sharedPoolMode;
         CreditBalance = creditBalance;
         ReservedCreditBalance = reservedCreditBalance;
+        DefaultPaymentMethodRefId = defaultPaymentMethodRefId;
         AllocationPolicyId = allocationPolicyId;
         CreatedAtUtc = createdAtUtc;
     }
@@ -160,6 +182,8 @@ public sealed class BillingAccount
 
     public decimal ReservedCreditBalance { get; private set; }
 
+    public string? DefaultPaymentMethodRefId { get; private set; }
+
     public string? AllocationPolicyId { get; private set; }
 
     public DateTimeOffset CreatedAtUtc { get; }
@@ -185,6 +209,11 @@ public sealed class BillingAccount
     {
         CreditBalance = walletBalance.AvailableCredits;
         ReservedCreditBalance = walletBalance.ReservedCredits;
+    }
+
+    public void SetDefaultPaymentMethod(string? paymentMethodRefId)
+    {
+        DefaultPaymentMethodRefId = paymentMethodRefId;
     }
 
     public void ReserveCredits(decimal amount)
