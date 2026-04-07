@@ -1,123 +1,37 @@
-# Canonical .NET 10 Graphode Skeleton
+# Graphode Billing Entitlements Service
 
-This repository is the canonical Graphode baseline for future .NET microservices. It is a reference skeleton and template source, not a shared runtime kernel. Future services are expected to copy the structure, keep only the pieces they need, and then own their code independently.
+This repository owns billing plans, billing accounts, subscriptions, ledger state and payment-method onboarding for Graphode.
+
+## Scope
+
+- plans and billing-account lookup
+- subscriptions and onboarding completion
+- wallet, ledger and budget policy state
+- payment-method capture support
+- edge-routed billing APIs
 
 ## Hard boundaries
 
-- This repository is a canonical baseline/reference skeleton.
-- It must NOT become a central shared runtime kernel.
-- The local contracts project in this repository is baseline-local only.
-- Future services must copy and own their own local contracts project independently.
-- Future services must NOT depend on a central runtime contracts package published from this repository.
-- The baseline demonstrates implementation shape and conventions. It does not create central runtime ownership.
+- DTOs, enums and contracts stay service-local.
+- Public ingress remains edge-only.
+- The repo must stay independently buildable and testable.
 
-## What this baseline contains
+## Current surfaces
 
-- .NET 10 solution with one minimal but real reference service
-- MongoDB integration with a practical repository pattern and index initializer
-- Redis-compatible support for query cache, session/refresh operational state and ephemeral metadata
-- read-side DTO model with paging, sorting and filtering
-- command, event and PEM contracts with deterministic envelopes
-- RabbitMQ producer support and one real command consumer path
-- internal-only HTTP client extension point with correlation/context propagation
-- structured options binding and startup wiring
-- health checks for MongoDB, RabbitMQ and Redis
-- JSON contract generation into `helper-ssot/contracts`
-- baseline Helm and Terraform deployment scaffolding
+- `GET /api/v1/billing/plans`
+- `GET /api/v1/workspaces/{workspaceId}/billing-account`
+- `GET /api/v1/workspaces/{workspaceId}/billing/subscription`
+- `GET /api/v1/workspaces/{workspaceId}/billing/ledger`
+- `POST /api/v1/workspaces/{workspaceId}/billing/ledger/reserve`
+- `POST /api/v1/workspaces/{workspaceId}/billing/ledger/commit`
+- `POST /api/v1/workspaces/{workspaceId}/billing/ledger/release`
+- `POST /api/v1/workspaces/{workspaceId}/billing/payment-methods`
+- `POST /api/v1/workspaces/{workspaceId}/billing/payment-methods/setup-intent`
 
-## Project layout
+## Notes
 
-- `src/Graphode.BillingEntitlementsService.Contracts`
-  Baseline-local contracts project. It exists inside this reference solution to show the expected shape for service-owned DTOs, message envelopes and contract artifacts. Future services should copy this pattern into their own repo and own it there.
-- `src/Graphode.BillingEntitlementsService.Domain`
-  Minimal domain entity used only to prove the baseline.
-- `src/Graphode.BillingEntitlementsService.Application`
-  Query/write services, validation, repository abstractions and messaging abstractions.
-- `src/Graphode.BillingEntitlementsService.Infrastructure`
-  Mongo, Redis, RabbitMQ, health checks and internal HTTP client support.
-- `src/Graphode.BillingEntitlementsService.Api`
-  Minimal API wiring and example endpoints.
-- `src/Graphode.BillingEntitlementsService.ContractGenerator`
-  Generates machine-readable JSON Schema artifacts from the contracts project.
-- `tests/Graphode.BillingEntitlementsService.Tests`
-  Lightweight tests for contract catalog and request validation.
-- `helper-ssot`
-  Lightweight changelog, generated contracts and baseline notes.
-- `deploy/helm`
-  Reusable per-service Helm chart baseline.
-- `deploy/terraform`
-  Reusable Terraform scaffold for service deployment wiring.
-
-## How to reuse this baseline
-
-1. Copy this repository or scaffold a new service from it.
-2. Rename the reference service projects and namespaces.
-3. Replace the reference aggregate, DTOs and handlers with service-owned business code.
-4. Keep the local structure and conventions, but do not introduce a shared runtime dependency back to this repo.
-5. Regenerate JSON contracts after changing external DTOs or message contracts.
-
-## Pattern vs example
-
-Baseline infrastructure pattern:
-
-- local contracts project shape
-- Mongo repository structure
-- Redis cache and operational-state hooks
-- RabbitMQ envelope/publisher/consumer wiring
-- internal HTTP context propagation
-- JSON contract generation
-
-Reference-service example code:
-
-- `ReferenceItem` aggregate and DTOs
-- example list/create/archive endpoints
-- example command handler registration
-- example RabbitMQ routing keys and queue names
-
-Future services are expected to replace or specialize the example-level parts. In particular, command handlers, payloads, DTOs, routes and contract files are owned by each future service, not centrally by this repo.
-
-## How to create a new microservice from this baseline
-
-1. Clone the repository into a new service repo.
-2. Rename:
-   - solution name
-   - project names
-   - namespaces
-   - chart/release names
-3. Replace `ReferenceItem` with the real aggregate and collection names.
-4. Update:
-   - Mongo indexes
-   - Rabbit exchanges, queues and routing keys
-   - Redis cache categories/operational state categories
-   - internal service endpoints under `InternalServices`
-5. Regenerate contracts:
-
-```bash
-dotnet run --project src/Graphode.BillingEntitlementsService.ContractGenerator/Graphode.BillingEntitlementsService.ContractGenerator.csproj
-```
-
-## Paging, filtering and sorting
-
-This baseline uses `page` + `pageSize`, not offset/limit.
-
-Why:
-- it is easier to understand for frontend consumers
-- it produces explicit paging metadata
-- it is deterministic enough for baseline service list endpoints
-
-Filtering is structured as:
-
-```json
-{
-  "field": "status",
-  "operator": "eq",
-  "values": ["active"]
-}
-```
-
-Sorting is structured as:
-
-```json
+- Keep billing and ledger behavior real and workspace-tied.
+- Use the SSOT and local tests as the current truth.
 {
   "field": "createdAtUtc",
   "direction": "desc"
