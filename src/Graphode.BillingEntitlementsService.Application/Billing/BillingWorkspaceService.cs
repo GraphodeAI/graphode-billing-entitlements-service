@@ -1,3 +1,4 @@
+using Graphode.BillingEntitlementsService.Application.Abstractions.Persistence;
 using System.Collections.Concurrent;
 using Graphode.BillingEntitlementsService.Contracts.Billing;
 using Graphode.BillingEntitlementsService.Domain.Billing;
@@ -15,6 +16,7 @@ public interface IBillingCatalogStore
     WorkspaceBillingViewResponse ChangeSubscription(string workspaceId, ChangeSubscriptionCommandRequest request);
     WorkspaceBillingViewResponse CancelSubscription(string workspaceId, CancelSubscriptionCommandRequest request);
     WorkspacePaymentMethodsResponse CapturePaymentMethod(string workspaceId, SetupPaymentMethodCommandRequest request);
+    StripeWebhookProcessingResponse HandleStripeWebhook(string payload, string signatureHeader);
     WorkspaceLedgerViewResponse ReserveCredits(string workspaceId, ReserveCreditsCommandRequest request);
     WorkspaceLedgerViewResponse CommitCredits(string workspaceId, CommitCreditsCommandRequest request);
     WorkspaceLedgerViewResponse ReleaseCredits(string workspaceId, ReleaseCreditsCommandRequest request);
@@ -22,16 +24,26 @@ public interface IBillingCatalogStore
 
 public sealed class BillingCatalogStore : IBillingCatalogStore
 {
+    private readonly IBillingStripeClient _stripeClient;
+    private readonly IBillingWorkspaceRepository _workspaceRepository;
     private readonly ConcurrentDictionary<string, BillingAccount> _accounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, Subscription> _subscriptions = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, WalletBalance> _walletBalances = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, BudgetPolicy> _budgetPolicies = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, ConcurrentQueue<LedgerEntry>> _ledgerEntries = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, List<PaymentMethodRef>> _paymentMethods = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, HashSet<string>> _processedStripeEvents = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, object> _accountLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly IReadOnlyList<PlanDefinition> _plans = BillingSeed.Plans;
 
-    public IReadOnlyList<PlanDefinition> ListPlans() => _plans;
+    public BillingCatalogStore(IBillingStripeClient stripeClient, IBillingWorkspaceRepository workspaceRepository)
+    {
+        _stripeClient = stripeClient;
+        _workspaceRepository = workspaceRepository;
+    }
+
+    public IReadOnlyList<PlanDefinition> ListPlans() =>
+        _plans.Select(plan => plan with { StripePriceId = _stripeClient.ResolvePriceId(plan) }).ToArray();
 
     public WorkspaceBillingViewResponse GetWorkspaceBillingView(string workspaceId)
     {
@@ -58,27 +70,38 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
         var lockHandle = GetAccountLock(workspaceId);
         lock (lockHandle)
         {
-        var account = GetOrCreateAccount(workspaceId, request.OwnerScopeType);
-        var plan = ResolvePlan(request.PlanKey, request.BillingInterval, account.OwnerScopeType);
-        var now = DateTimeOffset.UtcNow;
-        var subscriptionId = account.CurrentSubscriptionId ?? $"sub_{account.BillingAccountId}";
-        var subscription = new Subscription(
-            subscriptionId,
-            account.BillingAccountId,
-            $"sub_stripe_{account.BillingAccountId}",
-            SubscriptionStatus.Active,
-            plan.PlanKey,
-            plan.Version,
-            plan.BillingInterval,
-            now,
-            plan.BillingInterval == BillingInterval.Monthly ? now.AddMonths(1) : now.AddYears(1),
-            cancelAtPeriodEnd: false);
+            var account = GetOrCreateAccount(workspaceId, request.OwnerScopeType);
+            var plan = ResolvePlan(request.PlanKey, request.BillingInterval, account.OwnerScopeType);
+            var now = DateTimeOffset.UtcNow;
+            var stripeCustomer = EnsureStripeCustomer(account);
+            var subscriptionResult = _stripeClient.CreateSubscription(
+                account,
+                plan,
+                account.DefaultPaymentMethodRefId is null
+                    ? null
+                    : GetPaymentMethod(account, account.DefaultPaymentMethodRefId)?.StripePaymentMethodId);
 
-        _subscriptions[subscription.SubscriptionId] = subscription;
-        account.AttachSubscription(plan, subscription);
-        SyncWalletAndPolicy(account, plan, now);
+            var subscriptionId = account.CurrentSubscriptionId ?? $"sub_{account.BillingAccountId}";
+            var subscription = new Subscription(
+                subscriptionId,
+                account.BillingAccountId,
+                subscriptionResult.StripeSubscriptionId,
+                subscriptionResult.StripeSubscriptionItemId,
+                subscriptionResult.Status,
+                plan.PlanKey,
+                plan.Version,
+                plan.BillingInterval,
+                subscriptionResult.CurrentPeriodStartUtc,
+                subscriptionResult.CurrentPeriodEndUtc,
+                cancelAtPeriodEnd: subscriptionResult.CancelAtPeriodEnd);
 
-        return ToResponse(account, subscription);
+            _subscriptions[subscription.SubscriptionId] = subscription;
+            account.SetStripeCustomerId(stripeCustomer.StripeCustomerId);
+            account.AttachSubscription(plan, subscription);
+            SyncWalletAndPolicy(account, plan, now);
+            PersistWorkspace(account);
+
+            return ToResponse(account, subscription);
         }
     }
 
@@ -90,10 +113,18 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
             var account = GetOrCreateAccount(workspaceId);
             var existing = GetSubscription(account.CurrentSubscriptionId) ?? throw new InvalidOperationException($"Workspace {workspaceId} has no subscription.");
             var plan = ResolvePlan(request.PlanKey, request.BillingInterval, account.OwnerScopeType);
-            var now = DateTimeOffset.UtcNow;
-            existing.ChangePlan(plan, now);
+            var subscriptionResult = _stripeClient.ChangeSubscription(
+                account,
+                existing,
+                plan,
+                account.DefaultPaymentMethodRefId is null
+                    ? null
+                    : GetPaymentMethod(account, account.DefaultPaymentMethodRefId)?.StripePaymentMethodId);
+            existing.ChangePlan(plan, subscriptionResult.CurrentPeriodStartUtc);
+            existing.SetStripeSubscriptionItemId(subscriptionResult.StripeSubscriptionItemId);
             account.AttachSubscription(plan, existing);
-            SyncWalletAndPolicy(account, plan, now);
+            SyncWalletAndPolicy(account, plan, subscriptionResult.CurrentPeriodStartUtc);
+            PersistWorkspace(account);
 
             return ToResponse(account, existing);
         }
@@ -107,8 +138,10 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
         {
             var account = GetOrCreateAccount(workspaceId);
             var existing = GetSubscription(account.CurrentSubscriptionId) ?? throw new InvalidOperationException($"Workspace {workspaceId} has no subscription.");
+            _stripeClient.CancelSubscription(existing);
             existing.Cancel(DateTimeOffset.UtcNow);
             account.Cancel();
+            PersistWorkspace(account);
 
             return ToResponse(account, existing);
         }
@@ -121,11 +154,40 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
         lock (lockHandle)
         {
             var account = GetOrCreateAccount(workspaceId);
+            if (string.IsNullOrWhiteSpace(request.SetupIntentId) || string.IsNullOrWhiteSpace(request.StripePaymentMethodId))
+            {
+                var setupIntent = _stripeClient.CreateSetupIntent(account);
+                account.SetStripeCustomerId(setupIntent.StripeCustomerId);
+                PersistWorkspace(account);
+                return ToPaymentMethodsResponse(account, setupIntent.SetupIntentId, setupIntent.ClientSecret, setupIntent.StripeCustomerId);
+            }
+
             var paymentMethods = _paymentMethods.GetOrAdd(account.BillingAccountId, _ => new List<PaymentMethodRef>());
             var now = DateTimeOffset.UtcNow;
-            var paymentMethodRefId = $"pmr_{Guid.NewGuid():N}";
-            var stripePaymentMethodId = $"pm_{account.BillingAccountId}_{paymentMethods.Count + 1}";
             var shouldBeDefault = request.IsDefault || paymentMethods.Count == 0 || account.DefaultPaymentMethodRefId is null;
+            var existingPaymentMethod = paymentMethods.FirstOrDefault(method =>
+                string.Equals(method.StripePaymentMethodId, request.StripePaymentMethodId!, StringComparison.OrdinalIgnoreCase));
+
+            if (existingPaymentMethod is not null)
+            {
+                if (shouldBeDefault)
+                {
+                    for (var index = 0; index < paymentMethods.Count; index++)
+                    {
+                        paymentMethods[index] = paymentMethods[index] with
+                        {
+                            IsDefault = string.Equals(
+                                paymentMethods[index].PaymentMethodRefId,
+                                existingPaymentMethod.PaymentMethodRefId,
+                                StringComparison.OrdinalIgnoreCase)
+                        };
+                    }
+
+                    account.SetDefaultPaymentMethod(existingPaymentMethod.PaymentMethodRefId);
+                }
+                PersistWorkspace(account);
+                return ToPaymentMethodsResponse(account);
+            }
 
             if (shouldBeDefault)
             {
@@ -135,15 +197,20 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
                 }
             }
 
+            var paymentMethodResult = _stripeClient.ConfirmPaymentMethod(
+                account,
+                request.SetupIntentId!,
+                request.StripePaymentMethodId!);
+
             var paymentMethod = new PaymentMethodRef(
-                paymentMethodRefId,
+                $"pmr_{Guid.NewGuid():N}",
                 account.BillingAccountId,
-                stripePaymentMethodId,
-                request.Type.Trim(),
-                string.IsNullOrWhiteSpace(request.Brand) ? null : request.Brand.Trim(),
-                string.IsNullOrWhiteSpace(request.Last4) ? null : request.Last4.Trim(),
-                request.ExpMonth,
-                request.ExpYear,
+                paymentMethodResult.StripePaymentMethodId,
+                paymentMethodResult.Type,
+                paymentMethodResult.Brand,
+                paymentMethodResult.Last4,
+                paymentMethodResult.ExpMonth,
+                paymentMethodResult.ExpYear,
                 shouldBeDefault,
                 PaymentMethodRefStatus.Active,
                 now);
@@ -154,7 +221,49 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
                 account.SetDefaultPaymentMethod(paymentMethod.PaymentMethodRefId);
             }
 
+            account.SetStripeCustomerId(paymentMethodResult.StripeCustomerId);
+            PersistWorkspace(account);
+
             return ToPaymentMethodsResponse(account);
+        }
+    }
+
+    public StripeWebhookProcessingResponse HandleStripeWebhook(string payload, string signatureHeader)
+    {
+        var stripeEvent = _stripeClient.ParseWebhookEvent(payload, signatureHeader);
+        var account = FindAccountForStripeEvent(stripeEvent);
+
+        if (account is null)
+        {
+            return new StripeWebhookProcessingResponse(
+                stripeEvent.EventId,
+                stripeEvent.EventType,
+                "ignored",
+                null,
+                null,
+                "No billing account matched the Stripe customer or subscription identifier.");
+        }
+
+        var lockHandle = GetAccountLock(account.WorkspaceId);
+        lock (lockHandle)
+        {
+            account = FindAccountForStripeEvent(stripeEvent) ?? account;
+            if (IsStripeEventProcessed(account, stripeEvent.EventId))
+            {
+                return new StripeWebhookProcessingResponse(
+                    stripeEvent.EventId,
+                    stripeEvent.EventType,
+                    "duplicate",
+                    account.BillingAccountId,
+                    account.CurrentSubscriptionId,
+                    "Event id already processed.");
+            }
+
+            var response = ApplyStripeEvent(account, stripeEvent);
+            MarkStripeEventProcessed(account, stripeEvent.EventId);
+            PersistWorkspace(account);
+
+            return response;
         }
     }
 
@@ -183,6 +292,7 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
             _walletBalances[account.BillingAccountId] = wallet;
             account.SyncWallet(wallet);
             AppendLedgerEntry(account, LedgerEntryType.UsageReserve, request, now);
+            PersistWorkspace(account);
 
             return ToLedgerResponse(account);
         }
@@ -211,6 +321,7 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
             _walletBalances[account.BillingAccountId] = wallet;
             account.SyncWallet(wallet);
             AppendLedgerEntry(account, LedgerEntryType.UsageCommit, request, now);
+            PersistWorkspace(account);
 
             return ToLedgerResponse(account);
         }
@@ -240,6 +351,7 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
             _walletBalances[account.BillingAccountId] = wallet;
             account.SyncWallet(wallet);
             AppendLedgerEntry(account, LedgerEntryType.UsageRelease, request, now);
+            PersistWorkspace(account);
 
             return ToLedgerResponse(account);
         }
@@ -247,34 +359,59 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
 
     private BillingAccount GetOrCreateAccount(string workspaceId, BillingAccountOwnerScopeType? scopeType = null)
     {
-        var account = _accounts.GetOrAdd(workspaceId, key =>
+        var lockHandle = GetAccountLock(workspaceId);
+        lock (lockHandle)
         {
-            var ownerScopeType = scopeType ?? InferScopeType(key);
+            if (_accounts.TryGetValue(workspaceId, out var cachedAccount))
+            {
+                if (scopeType.HasValue && cachedAccount.OwnerScopeType != scopeType.Value)
+                {
+                    throw new InvalidOperationException($"Workspace {workspaceId} already exists with scope {cachedAccount.OwnerScopeType}.");
+                }
+
+                EnsureAuxiliaryState(cachedAccount);
+                return cachedAccount;
+            }
+
+            var persisted = _workspaceRepository.GetByWorkspaceId(workspaceId);
+            if (persisted is not null)
+            {
+                if (scopeType.HasValue && persisted.OwnerScopeType != scopeType.Value)
+                {
+                    throw new InvalidOperationException($"Workspace {workspaceId} already exists with scope {persisted.OwnerScopeType}.");
+                }
+
+                return RestoreWorkspace(persisted);
+            }
+
+            var ownerScopeType = scopeType ?? InferScopeType(workspaceId);
             var plan = BillingSeed.DefaultPlanFor(ownerScopeType);
             var now = DateTimeOffset.UtcNow;
             var account = new BillingAccount(
-                billingAccountId: $"ba_{key}",
-                workspaceId: key,
+                billingAccountId: $"ba_{workspaceId}",
+                workspaceId: workspaceId,
                 ownerScopeType: ownerScopeType,
-                ownerScopeId: key,
+                ownerScopeId: workspaceId,
                 status: BillingAccountStatus.Active,
                 currency: "EUR",
                 currentPlanKey: plan.PlanKey,
                 currentPlanVersion: plan.Version,
                 currentSubscriptionId: null,
+                stripeCustomerId: null,
                 sharedPoolMode: ownerScopeType == BillingAccountOwnerScopeType.OrganizationWorkspace
                     ? BillingSharedPoolMode.WorkspaceSharedPool
                     : BillingSharedPoolMode.None,
                 creditBalance: plan.IncludedCredits,
                 reservedCreditBalance: 0,
                 defaultPaymentMethodRefId: null,
-                allocationPolicyId: ownerScopeType == BillingAccountOwnerScopeType.OrganizationWorkspace ? $"cap_{key}" : null,
+                allocationPolicyId: ownerScopeType == BillingAccountOwnerScopeType.OrganizationWorkspace ? $"cap_{workspaceId}" : null,
                 createdAtUtc: now);
 
             var subscription = new Subscription(
-                subscriptionId: $"sub_{key}",
+                subscriptionId: $"sub_{workspaceId}",
                 billingAccountId: account.BillingAccountId,
-                providerSubscriptionId: $"sub_stripe_{key}",
+                providerSubscriptionId: $"sub_stripe_{workspaceId}",
+                stripeSubscriptionItemId: $"si_{workspaceId}",
                 status: SubscriptionStatus.Active,
                 planKey: plan.PlanKey,
                 planVersion: plan.Version,
@@ -283,18 +420,226 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
                 currentPeriodEndUtc: now.AddMonths(1),
                 cancelAtPeriodEnd: false);
 
+            _accounts[workspaceId] = account;
             _subscriptions[subscription.SubscriptionId] = subscription;
-            account.AttachSubscription(plan, subscription);
             SyncWalletAndPolicy(account, plan, now);
+            PersistWorkspace(account);
             return account;
-        });
+        }
+    }
 
-        EnsureAuxiliaryState(account);
-        return account;
+    private BillingAccount? FindAccountForStripeEvent(StripeWebhookEventResult stripeEvent)
+    {
+        if (!string.IsNullOrWhiteSpace(stripeEvent.StripeCustomerId))
+        {
+            var customerAccount = FindAccountByStripeCustomerId(stripeEvent.StripeCustomerId);
+            if (customerAccount is not null)
+            {
+                return customerAccount;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(stripeEvent.StripeSubscriptionId))
+        {
+            var subscriptionAccount = FindAccountByProviderSubscriptionId(stripeEvent.StripeSubscriptionId);
+            if (subscriptionAccount is not null)
+            {
+                return subscriptionAccount;
+            }
+        }
+
+        return null;
+    }
+
+    private BillingAccount? FindAccountByStripeCustomerId(string stripeCustomerId)
+    {
+        var cachedAccount = _accounts.Values.FirstOrDefault(account =>
+            string.Equals(account.StripeCustomerId, stripeCustomerId, StringComparison.OrdinalIgnoreCase));
+        if (cachedAccount is not null)
+        {
+            return cachedAccount;
+        }
+
+        var snapshot = _workspaceRepository.FindByStripeCustomerId(stripeCustomerId);
+        return snapshot is null ? null : RestoreWorkspace(snapshot);
+    }
+
+    private BillingAccount? FindAccountByProviderSubscriptionId(string providerSubscriptionId)
+    {
+        var cachedSubscription = _subscriptions.Values.FirstOrDefault(subscription =>
+            string.Equals(subscription.ProviderSubscriptionId, providerSubscriptionId, StringComparison.OrdinalIgnoreCase));
+        if (cachedSubscription is not null)
+        {
+            return _accounts.Values.FirstOrDefault(account => account.BillingAccountId == cachedSubscription.BillingAccountId);
+        }
+
+        var snapshot = _workspaceRepository.FindByProviderSubscriptionId(providerSubscriptionId);
+        return snapshot is null ? null : RestoreWorkspace(snapshot);
+    }
+
+    private StripeWebhookProcessingResponse ApplyStripeEvent(BillingAccount account, StripeWebhookEventResult stripeEvent)
+    {
+        var now = stripeEvent.CurrentPeriodEndUtc ?? DateTimeOffset.UtcNow;
+        var subscription = account.CurrentSubscriptionId is null ? null : GetSubscription(account.CurrentSubscriptionId);
+
+        if (subscription is not null && !string.IsNullOrWhiteSpace(stripeEvent.StripeSubscriptionId) &&
+            !string.Equals(subscription.ProviderSubscriptionId, stripeEvent.StripeSubscriptionId, StringComparison.OrdinalIgnoreCase))
+        {
+            subscription = null;
+        }
+
+        switch (stripeEvent.EventType.ToLowerInvariant())
+        {
+            case "customer.subscription.created":
+            case "customer.subscription.updated":
+                ApplySubscriptionUpdate(account, subscription, stripeEvent, now);
+                break;
+            case "customer.subscription.deleted":
+                ApplySubscriptionCancellation(account, subscription, now, stripeEvent.EventType);
+                break;
+            case "invoice.payment_failed":
+                ApplyPastDueState(account, subscription, now, "Invoice payment failed.");
+                break;
+            case "invoice.payment_succeeded":
+            case "invoice.paid":
+                ApplyActiveState(account, subscription, now, "Invoice paid.");
+                break;
+            default:
+                return new StripeWebhookProcessingResponse(
+                    stripeEvent.EventId,
+                    stripeEvent.EventType,
+                    "ignored",
+                    account.BillingAccountId,
+                    account.CurrentSubscriptionId,
+                    "Stripe event type is not handled by the billing recovery boundary.");
+        }
+
+        return new StripeWebhookProcessingResponse(
+            stripeEvent.EventId,
+            stripeEvent.EventType,
+            "processed",
+            account.BillingAccountId,
+            account.CurrentSubscriptionId,
+            $"Applied {stripeEvent.EventType}.");
+    }
+
+    private void ApplySubscriptionUpdate(
+        BillingAccount account,
+        Subscription? subscription,
+        StripeWebhookEventResult stripeEvent,
+        DateTimeOffset timestampUtc)
+    {
+        if (subscription is null)
+        {
+            account.MarkActive();
+            return;
+        }
+
+        var mappedPlan = ResolvePlanForPriceId(stripeEvent.StripePriceId, account.OwnerScopeType) ?? ResolveCurrentPlan(account);
+        if (subscription.PlanKey != mappedPlan.PlanKey || subscription.PlanVersion != mappedPlan.Version)
+        {
+            subscription.ChangePlan(mappedPlan, stripeEvent.CurrentPeriodStartUtc ?? timestampUtc);
+        }
+
+        subscription.ApplyProviderState(
+            stripeEvent.SubscriptionStatus ?? SubscriptionStatus.Active,
+            stripeEvent.CurrentPeriodStartUtc ?? timestampUtc,
+            stripeEvent.CurrentPeriodEndUtc ?? subscription.CurrentPeriodEndUtc,
+            stripeEvent.CancelAtPeriodEnd ?? subscription.CancelAtPeriodEnd);
+
+        if (stripeEvent.SubscriptionStatus == SubscriptionStatus.PastDue)
+        {
+            account.MarkPastDue();
+        }
+        else if (stripeEvent.SubscriptionStatus == SubscriptionStatus.Cancelled)
+        {
+            account.Cancel();
+        }
+        else
+        {
+            account.MarkActive();
+        }
+    }
+
+    private void ApplySubscriptionCancellation(
+        BillingAccount account,
+        Subscription? subscription,
+        DateTimeOffset timestampUtc,
+        string eventType)
+    {
+        _ = eventType;
+        subscription?.Cancel(timestampUtc);
+        account.Cancel();
+    }
+
+    private void ApplyPastDueState(BillingAccount account, Subscription? subscription, DateTimeOffset timestampUtc, string reason)
+    {
+        _ = reason;
+        if (subscription is not null)
+        {
+            subscription.ApplyProviderState(SubscriptionStatus.PastDue, subscription.CurrentPeriodStartUtc, timestampUtc, subscription.CancelAtPeriodEnd);
+        }
+
+        account.MarkPastDue();
+    }
+
+    private void ApplyActiveState(BillingAccount account, Subscription? subscription, DateTimeOffset timestampUtc, string reason)
+    {
+        _ = reason;
+        if (subscription is not null)
+        {
+            subscription.ApplyProviderState(SubscriptionStatus.Active, subscription.CurrentPeriodStartUtc, timestampUtc, false);
+        }
+
+        account.MarkActive();
+    }
+
+    private PlanDefinition? ResolvePlanForPriceId(string? stripePriceId, BillingAccountOwnerScopeType ownerScopeType)
+    {
+        if (string.IsNullOrWhiteSpace(stripePriceId))
+        {
+            return null;
+        }
+
+        var expectedFamily = ownerScopeType == BillingAccountOwnerScopeType.OrganizationWorkspace
+            ? BillingPlanFamily.Organization
+            : BillingPlanFamily.Solo;
+
+        return _plans.FirstOrDefault(plan =>
+            plan.Family == expectedFamily &&
+            string.Equals(_stripeClient.ResolvePriceId(plan), stripePriceId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsStripeEventProcessed(BillingAccount account, string eventId) =>
+        _processedStripeEvents.TryGetValue(account.BillingAccountId, out var events) && events.Contains(eventId);
+
+    private void MarkStripeEventProcessed(BillingAccount account, string eventId)
+    {
+        var events = _processedStripeEvents.GetOrAdd(account.BillingAccountId, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        events.Add(eventId);
     }
 
     private Subscription? GetSubscription(string? subscriptionId) =>
         subscriptionId is null ? null : _subscriptions.TryGetValue(subscriptionId, out var subscription) ? subscription : null;
+
+    private PaymentMethodRef? GetPaymentMethod(BillingAccount account, string paymentMethodRefId)
+    {
+        return _paymentMethods.TryGetValue(account.BillingAccountId, out var paymentMethods)
+            ? paymentMethods.FirstOrDefault(paymentMethod => paymentMethod.PaymentMethodRefId == paymentMethodRefId)
+            : null;
+    }
+
+    private StripeCustomerResult EnsureStripeCustomer(BillingAccount account)
+    {
+        if (!string.IsNullOrWhiteSpace(account.StripeCustomerId))
+        {
+            return new StripeCustomerResult(account.StripeCustomerId);
+        }
+
+        var result = _stripeClient.EnsureCustomer(account);
+        account.SetStripeCustomerId(result.StripeCustomerId);
+        return result;
+    }
 
     private WalletBalance GetWalletBalance(BillingAccount account)
     {
@@ -341,6 +686,7 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
 
         _ledgerEntries.TryAdd(account.BillingAccountId, new ConcurrentQueue<LedgerEntry>());
         _paymentMethods.TryAdd(account.BillingAccountId, new List<PaymentMethodRef>());
+        _processedStripeEvents.TryAdd(account.BillingAccountId, []);
     }
 
     private PlanDefinition ResolveCurrentPlan(BillingAccount account) =>
@@ -398,10 +744,10 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
             : BillingAccountOwnerScopeType.PersonalWorkspace;
     }
 
-    private static WorkspaceBillingViewResponse ToResponse(BillingAccount account, Subscription? subscription)
+    private WorkspaceBillingViewResponse ToResponse(BillingAccount account, Subscription? subscription)
     {
-        var plans = BillingSeed.Plans.Select(MapPlan).ToArray();
-        return new WorkspaceBillingViewResponse(MapAccount(account), subscription is null ? null : MapSubscription(subscription), new BillingPlansResponse(plans));
+        var plans = ListPlans().Select(MapPlan).ToArray();
+        return new WorkspaceBillingViewResponse(ToAccountResponse(account), subscription is null ? null : ToSubscriptionResponse(subscription), new BillingPlansResponse(plans));
     }
 
     private WorkspaceLedgerViewResponse ToLedgerResponse(BillingAccount account)
@@ -412,23 +758,32 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
             ? entries.Reverse().Select(MapLedgerEntry).ToArray()
             : Array.Empty<LedgerEntryResponse>();
 
-        return new WorkspaceLedgerViewResponse(MapAccount(account), MapWallet(wallet), MapPolicy(policy), ledgerEntries);
+        return new WorkspaceLedgerViewResponse(ToAccountResponse(account), MapWallet(wallet), MapPolicy(policy), ledgerEntries);
     }
 
-    private WorkspacePaymentMethodsResponse ToPaymentMethodsResponse(BillingAccount account)
+    private WorkspacePaymentMethodsResponse ToPaymentMethodsResponse(
+        BillingAccount account,
+        string? setupIntentId = null,
+        string? setupIntentClientSecret = null,
+        string? stripeCustomerId = null)
     {
         var paymentMethods = _paymentMethods.TryGetValue(account.BillingAccountId, out var methods)
             ? methods.OrderByDescending(method => method.CreatedAtUtc).Select(MapPaymentMethod).ToArray()
             : Array.Empty<PaymentMethodRefResponse>();
 
-        return new WorkspacePaymentMethodsResponse(MapAccount(account), paymentMethods);
+        return new WorkspacePaymentMethodsResponse(
+            ToAccountResponse(account),
+            paymentMethods,
+            setupIntentId,
+            setupIntentClientSecret,
+            stripeCustomerId ?? account.StripeCustomerId);
     }
 
     private static BillingPlanResponse MapPlan(PlanDefinition plan) =>
-        new(plan.PlanKey, plan.Version, plan.Family, plan.BillingInterval, plan.StripePriceId, plan.IncludedCredits, plan.Entitlements, plan.DefaultBudgetBehavior, plan.Recommended);
+        new(plan.PlanKey, plan.Version, plan.Family, plan.BillingInterval, plan.StripePriceId, plan.BasePrice, plan.SeatPrice, plan.IncludedCredits, plan.Entitlements, plan.DefaultBudgetBehavior, plan.Recommended);
 
-    private static BillingAccountResponse MapAccount(BillingAccount account) =>
-        new(account.BillingAccountId, account.WorkspaceId, account.OwnerScopeType, account.OwnerScopeId, account.Status, account.Currency, account.CurrentPlanKey, account.CurrentPlanVersion, account.CurrentSubscriptionId, account.SharedPoolMode, account.CreditBalance, account.ReservedCreditBalance, account.DefaultPaymentMethodRefId, account.AllocationPolicyId, account.CreatedAtUtc);
+    private static BillingAccountResponse ToAccountResponse(BillingAccount account) =>
+        new(account.BillingAccountId, account.WorkspaceId, account.OwnerScopeType, account.OwnerScopeId, account.Status, account.Currency, account.CurrentPlanKey, account.CurrentPlanVersion, account.CurrentSubscriptionId, account.StripeCustomerId, account.SharedPoolMode, account.CreditBalance, account.ReservedCreditBalance, account.DefaultPaymentMethodRefId, account.AllocationPolicyId, account.CreatedAtUtc);
 
     private static WalletBalanceResponse MapWallet(WalletBalance wallet) =>
         new(wallet.AvailableCredits, wallet.ReservedCredits, wallet.Currency, wallet.UpdatedAtUtc);
@@ -436,8 +791,8 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
     private static BudgetPolicyResponse MapPolicy(BudgetPolicy policy) =>
         new(policy.ScopeType, policy.ScopeRefId, policy.Category, policy.Period, policy.LimitAmount, policy.EnforcementMode, policy.CreatedAtUtc);
 
-    private static SubscriptionResponse MapSubscription(Subscription subscription) =>
-        new(subscription.SubscriptionId, subscription.BillingAccountId, subscription.Provider, subscription.ProviderSubscriptionId, subscription.Status, subscription.PlanKey, subscription.PlanVersion, subscription.BillingInterval, subscription.CurrentPeriodStartUtc, subscription.CurrentPeriodEndUtc, subscription.CancelAtPeriodEnd);
+    private static SubscriptionResponse ToSubscriptionResponse(Subscription subscription) =>
+        new(subscription.SubscriptionId, subscription.BillingAccountId, subscription.Provider, subscription.ProviderSubscriptionId, subscription.StripeSubscriptionItemId, subscription.Status, subscription.PlanKey, subscription.PlanVersion, subscription.BillingInterval, subscription.CurrentPeriodStartUtc, subscription.CurrentPeriodEndUtc, subscription.CancelAtPeriodEnd);
 
     private static PaymentMethodRefResponse MapPaymentMethod(PaymentMethodRef paymentMethod) =>
         new(
@@ -506,6 +861,113 @@ public sealed class BillingCatalogStore : IBillingCatalogStore
         queue.Enqueue(entry);
     }
 
+    private BillingAccount RestoreWorkspace(BillingWorkspaceSnapshot snapshot)
+    {
+        var account = new BillingAccount(
+            snapshot.BillingAccountId,
+            snapshot.WorkspaceId,
+            snapshot.OwnerScopeType,
+            snapshot.OwnerScopeId,
+            snapshot.Status,
+            snapshot.Currency,
+            snapshot.CurrentPlanKey,
+            snapshot.CurrentPlanVersion,
+            snapshot.CurrentSubscriptionId,
+            snapshot.StripeCustomerId,
+            snapshot.SharedPoolMode,
+            snapshot.CreditBalance,
+            snapshot.ReservedCreditBalance,
+            snapshot.DefaultPaymentMethodRefId,
+            snapshot.AllocationPolicyId,
+            snapshot.CreatedAtUtc);
+
+        _accounts[snapshot.WorkspaceId] = account;
+
+        if (snapshot.Subscription is not null)
+        {
+            var subscription = ToDomain(snapshot.Subscription);
+            _subscriptions[subscription.SubscriptionId] = subscription;
+        }
+
+        _paymentMethods[snapshot.BillingAccountId] = snapshot.PaymentMethods.ToList();
+        _ledgerEntries[snapshot.BillingAccountId] = new ConcurrentQueue<LedgerEntry>(snapshot.LedgerEntries);
+        _processedStripeEvents[snapshot.BillingAccountId] = snapshot.ProcessedStripeEventIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _walletBalances[snapshot.BillingAccountId] = new WalletBalance(snapshot.CreditBalance, snapshot.ReservedCreditBalance, snapshot.Currency, snapshot.CreatedAtUtc);
+        _budgetPolicies[snapshot.BillingAccountId] = BuildBudgetPolicy(account, ResolveCurrentPlan(account), snapshot.CreatedAtUtc);
+
+        EnsureAuxiliaryState(account);
+        return account;
+    }
+
+    private void PersistWorkspace(BillingAccount account)
+    {
+        var snapshot = BuildSnapshot(account);
+        _workspaceRepository.Upsert(snapshot);
+    }
+
+    private BillingWorkspaceSnapshot BuildSnapshot(BillingAccount account)
+    {
+        var paymentMethods = _paymentMethods.TryGetValue(account.BillingAccountId, out var methods)
+            ? methods.ToArray()
+            : [];
+        var ledgerEntries = _ledgerEntries.TryGetValue(account.BillingAccountId, out var entries)
+            ? entries.ToArray()
+            : [];
+        var processedStripeEventIds = _processedStripeEvents.TryGetValue(account.BillingAccountId, out var events)
+            ? events.ToArray()
+            : [];
+
+        return new BillingWorkspaceSnapshot(
+            BillingAccountId: account.BillingAccountId,
+            WorkspaceId: account.WorkspaceId,
+            OwnerScopeType: account.OwnerScopeType,
+            OwnerScopeId: account.OwnerScopeId,
+            Status: account.Status,
+            Currency: account.Currency,
+            CurrentPlanKey: account.CurrentPlanKey,
+            CurrentPlanVersion: account.CurrentPlanVersion,
+            CurrentSubscriptionId: account.CurrentSubscriptionId,
+            StripeCustomerId: account.StripeCustomerId,
+            SharedPoolMode: account.SharedPoolMode,
+            CreditBalance: account.CreditBalance,
+            ReservedCreditBalance: account.ReservedCreditBalance,
+            DefaultPaymentMethodRefId: account.DefaultPaymentMethodRefId,
+            AllocationPolicyId: account.AllocationPolicyId,
+            CreatedAtUtc: account.CreatedAtUtc,
+            Subscription: GetSubscription(account.CurrentSubscriptionId) is Subscription subscription ? ToSnapshot(subscription) : null,
+            PaymentMethods: paymentMethods,
+            LedgerEntries: ledgerEntries,
+            ProcessedStripeEventIds: processedStripeEventIds);
+    }
+
+    private static BillingSubscriptionSnapshot ToSnapshot(Subscription subscription) =>
+        new(
+            subscription.SubscriptionId,
+            subscription.BillingAccountId,
+            subscription.ProviderSubscriptionId,
+            subscription.StripeSubscriptionItemId,
+            subscription.Status,
+            subscription.PlanKey,
+            subscription.PlanVersion,
+            subscription.BillingInterval,
+            subscription.CurrentPeriodStartUtc,
+            subscription.CurrentPeriodEndUtc,
+            subscription.CancelAtPeriodEnd);
+
+    private static Subscription ToDomain(BillingSubscriptionSnapshot snapshot) =>
+        new(
+            snapshot.SubscriptionId,
+            snapshot.BillingAccountId,
+            snapshot.ProviderSubscriptionId,
+            snapshot.StripeSubscriptionItemId,
+            snapshot.Status,
+            snapshot.PlanKey,
+            snapshot.PlanVersion,
+            snapshot.BillingInterval,
+            snapshot.CurrentPeriodStartUtc,
+            snapshot.CurrentPeriodEndUtc,
+            snapshot.CancelAtPeriodEnd);
+
     private static LedgerEntryResponse MapLedgerEntry(LedgerEntry entry) =>
         new(entry.LedgerEntryId, entry.BillingAccountId, entry.Type, entry.Amount, entry.Currency, entry.ReferenceId, entry.ProjectId, entry.UserId, entry.AllocationId, entry.CreatedAtUtc);
 
@@ -552,7 +1014,7 @@ public sealed class BillingWorkspaceService
     {
         _ = cancellationToken;
         return Task.FromResult<IReadOnlyList<BillingPlanResponse>>(
-            _store.ListPlans().Select(plan => new BillingPlanResponse(plan.PlanKey, plan.Version, plan.Family, plan.BillingInterval, plan.StripePriceId, plan.IncludedCredits, plan.Entitlements, plan.DefaultBudgetBehavior, plan.Recommended)).ToArray());
+            _store.ListPlans().Select(plan => new BillingPlanResponse(plan.PlanKey, plan.Version, plan.Family, plan.BillingInterval, plan.StripePriceId, plan.BasePrice, plan.SeatPrice, plan.IncludedCredits, plan.Entitlements, plan.DefaultBudgetBehavior, plan.Recommended)).ToArray());
     }
 
     public Task<WorkspaceBillingViewResponse> GetWorkspaceBillingViewAsync(string workspaceId, CancellationToken cancellationToken)
@@ -598,6 +1060,15 @@ public sealed class BillingWorkspaceService
     {
         _ = cancellationToken;
         return Task.FromResult(_store.CapturePaymentMethod(workspaceId, request));
+    }
+
+    public Task<StripeWebhookProcessingResponse> HandleStripeWebhookAsync(
+        string payload,
+        string signatureHeader,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        return Task.FromResult(_store.HandleStripeWebhook(payload, signatureHeader));
     }
 
     public Task<WorkspaceLedgerViewResponse> ReserveCreditsAsync(string workspaceId, ReserveCreditsCommandRequest request, CancellationToken cancellationToken)

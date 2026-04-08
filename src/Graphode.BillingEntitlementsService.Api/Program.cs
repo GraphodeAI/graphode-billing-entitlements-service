@@ -1,6 +1,7 @@
 using Graphode.BillingEntitlementsService.Application.DependencyInjection;
 using Graphode.BillingEntitlementsService.Application.Services;
 using Graphode.BillingEntitlementsService.Contracts.Billing;
+using Graphode.BillingEntitlementsService.Infrastructure.DependencyInjection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using System.Text.Json.Serialization;
 
@@ -8,7 +9,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+builder.Services.AddBillingPersistenceInfrastructure(builder.Configuration);
 builder.Services.AddBillingEntitlementsApplication();
+builder.Services.AddBillingStripeInfrastructure(builder.Configuration);
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
@@ -153,6 +156,49 @@ app.MapPost("/api/v1/workspaces/{workspaceId}/billing/payment-methods/setup-inte
         return Results.ValidationProblem(new Dictionary<string, string[]>
         {
             ["setupPaymentMethod"] = new[] { exception.Message }
+        });
+    }
+});
+
+app.MapPost("/api/v1/webhooks/stripe", async (
+    HttpRequest request,
+    BillingWorkspaceService service,
+    CancellationToken cancellationToken) =>
+{
+    _ = cancellationToken;
+    var signatureHeader = request.Headers["Stripe-Signature"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(signatureHeader))
+    {
+        return Results.BadRequest(new
+        {
+            error = "Stripe-Signature header is required."
+        });
+    }
+
+    using var reader = new StreamReader(request.Body);
+    var payload = await reader.ReadToEndAsync();
+    if (string.IsNullOrWhiteSpace(payload))
+    {
+        return Results.BadRequest(new
+        {
+            error = "Stripe webhook payload is empty."
+        });
+    }
+
+    try
+    {
+        var response = await service.HandleStripeWebhookAsync(payload, signatureHeader, cancellationToken);
+        return Results.Ok(response);
+    }
+    catch (InvalidOperationException exception) when (exception.Message.Contains("webhook secret", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Stripe.StripeException exception)
+    {
+        return Results.BadRequest(new
+        {
+            error = exception.Message
         });
     }
 });

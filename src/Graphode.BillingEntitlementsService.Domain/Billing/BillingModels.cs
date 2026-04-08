@@ -77,6 +77,8 @@ public sealed record PlanDefinition(
     BillingPlanFamily Family,
     BillingInterval BillingInterval,
     string StripePriceId,
+    decimal BasePrice,
+    decimal? SeatPrice,
     decimal IncludedCredits,
     BillingEntitlements Entitlements,
     BudgetBehavior DefaultBudgetBehavior,
@@ -134,6 +136,7 @@ public sealed class BillingAccount
         string currentPlanKey,
         int currentPlanVersion,
         string? currentSubscriptionId,
+        string? stripeCustomerId,
         BillingSharedPoolMode sharedPoolMode,
         decimal creditBalance,
         decimal reservedCreditBalance,
@@ -150,6 +153,7 @@ public sealed class BillingAccount
         CurrentPlanKey = currentPlanKey;
         CurrentPlanVersion = currentPlanVersion;
         CurrentSubscriptionId = currentSubscriptionId;
+        StripeCustomerId = stripeCustomerId;
         SharedPoolMode = sharedPoolMode;
         CreditBalance = creditBalance;
         ReservedCreditBalance = reservedCreditBalance;
@@ -175,6 +179,8 @@ public sealed class BillingAccount
     public int CurrentPlanVersion { get; private set; }
 
     public string? CurrentSubscriptionId { get; private set; }
+
+    public string? StripeCustomerId { get; private set; }
 
     public BillingSharedPoolMode SharedPoolMode { get; private set; }
 
@@ -205,6 +211,21 @@ public sealed class BillingAccount
         Status = BillingAccountStatus.Cancelled;
     }
 
+    public void MarkPastDue()
+    {
+        Status = BillingAccountStatus.PastDue;
+    }
+
+    public void MarkSuspended()
+    {
+        Status = BillingAccountStatus.Suspended;
+    }
+
+    public void MarkActive()
+    {
+        Status = BillingAccountStatus.Active;
+    }
+
     public void SyncWallet(WalletBalance walletBalance)
     {
         CreditBalance = walletBalance.AvailableCredits;
@@ -214,6 +235,11 @@ public sealed class BillingAccount
     public void SetDefaultPaymentMethod(string? paymentMethodRefId)
     {
         DefaultPaymentMethodRefId = paymentMethodRefId;
+    }
+
+    public void SetStripeCustomerId(string stripeCustomerId)
+    {
+        StripeCustomerId = stripeCustomerId;
     }
 
     public void ReserveCredits(decimal amount)
@@ -240,6 +266,7 @@ public sealed class Subscription
         string subscriptionId,
         string billingAccountId,
         string providerSubscriptionId,
+        string? stripeSubscriptionItemId,
         SubscriptionStatus status,
         string planKey,
         int planVersion,
@@ -252,6 +279,7 @@ public sealed class Subscription
         BillingAccountId = billingAccountId;
         Provider = "STRIPE";
         ProviderSubscriptionId = providerSubscriptionId;
+        StripeSubscriptionItemId = stripeSubscriptionItemId;
         Status = status;
         PlanKey = planKey;
         PlanVersion = planVersion;
@@ -268,6 +296,8 @@ public sealed class Subscription
     public string Provider { get; }
 
     public string ProviderSubscriptionId { get; private set; }
+
+    public string? StripeSubscriptionItemId { get; private set; }
 
     public SubscriptionStatus Status { get; private set; }
 
@@ -296,11 +326,28 @@ public sealed class Subscription
         CancelAtPeriodEnd = false;
     }
 
+    public void SetStripeSubscriptionItemId(string stripeSubscriptionItemId)
+    {
+        StripeSubscriptionItemId = stripeSubscriptionItemId;
+    }
+
     public void Cancel(DateTimeOffset timestampUtc)
     {
         Status = SubscriptionStatus.Cancelled;
         CancelAtPeriodEnd = true;
         CurrentPeriodEndUtc = timestampUtc;
+    }
+
+    public void ApplyProviderState(
+        SubscriptionStatus status,
+        DateTimeOffset currentPeriodStartUtc,
+        DateTimeOffset currentPeriodEndUtc,
+        bool cancelAtPeriodEnd)
+    {
+        Status = status;
+        CurrentPeriodStartUtc = currentPeriodStartUtc;
+        CurrentPeriodEndUtc = currentPeriodEndUtc;
+        CancelAtPeriodEnd = cancelAtPeriodEnd;
     }
 }
 
@@ -314,6 +361,8 @@ public static class BillingSeed
             BillingPlanFamily.Solo,
             BillingInterval.Monthly,
             "price_solo_starter_monthly",
+            25.00m,
+            null,
             2500,
             new BillingEntitlements(10, 3, false, false, false),
             BudgetBehavior.PauseOnExhaust,
@@ -324,6 +373,8 @@ public static class BillingSeed
             BillingPlanFamily.Organization,
             BillingInterval.Monthly,
             "price_org_pro_monthly",
+            100.00m,
+            15.00m,
             10000,
             new BillingEntitlements(50, 100, true, true, true),
             BudgetBehavior.AllowOverage,

@@ -68,3 +68,14 @@ public sealed class InternalServiceClientOptions
 
     public Dictionary<string, string> Services { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
+
+public sealed class StripeOptions
+{
+    public const string SectionName = "Stripe";
+
+    public string? SecretKey { get; init; }
+
+    public string? PublishableKey { get; init; }
+
+    public string? WebhookSecret { get; init; }
+}

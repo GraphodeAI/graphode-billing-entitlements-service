@@ -10,6 +10,8 @@ public sealed record BillingPlanResponse(
     BillingPlanFamily Family,
     BillingInterval BillingInterval,
     string StripePriceId,
+    decimal BasePrice,
+    decimal? SeatPrice,
     decimal IncludedCredits,
     BillingEntitlements Entitlements,
     BudgetBehavior DefaultBudgetBehavior,
@@ -25,6 +27,7 @@ public sealed record BillingAccountResponse(
     string CurrentPlanKey,
     int CurrentPlanVersion,
     string? CurrentSubscriptionId,
+    string? StripeCustomerId,
     BillingSharedPoolMode SharedPoolMode,
     decimal CreditBalance,
     decimal ReservedCreditBalance,
@@ -37,6 +40,7 @@ public sealed record SubscriptionResponse(
     string BillingAccountId,
     string Provider,
     string ProviderSubscriptionId,
+    string? StripeSubscriptionItemId,
     SubscriptionStatus Status,
     string PlanKey,
     int PlanVersion,
@@ -65,7 +69,10 @@ public sealed record PaymentMethodRefResponse(
 
 public sealed record WorkspacePaymentMethodsResponse(
     BillingAccountResponse Account,
-    IReadOnlyList<PaymentMethodRefResponse> PaymentMethods);
+    IReadOnlyList<PaymentMethodRefResponse> PaymentMethods,
+    string? SetupIntentId = null,
+    string? SetupIntentClientSecret = null,
+    string? StripeCustomerId = null);
 
 public sealed record WorkspaceLedgerViewResponse(
     BillingAccountResponse Account,
@@ -92,7 +99,10 @@ public sealed record SetupPaymentMethodCommandRequest(
     string? Last4,
     int? ExpMonth,
     int? ExpYear,
-    bool IsDefault);
+    bool IsDefault,
+    string? SetupIntentId = null,
+    string? StripePaymentMethodId = null,
+    string? StripeCustomerId = null);
 
 public sealed record ReserveCreditsCommandRequest(
     decimal Amount,
@@ -141,3 +151,11 @@ public sealed record LedgerEntryResponse(
     string? UserId,
     string? AllocationId,
     DateTimeOffset CreatedAtUtc);
+
+public sealed record StripeWebhookProcessingResponse(
+    string EventId,
+    string EventType,
+    string ProcessingStatus,
+    string? BillingAccountId,
+    string? SubscriptionId,
+    string? Details);
