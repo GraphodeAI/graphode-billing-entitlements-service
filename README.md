@@ -137,16 +137,19 @@ This repository is prepared for both:
 - contracts and contract-generator namespaces are derived from `RootNamespace`
 - `.git`, `.terraform`, `bin` and `obj` content are excluded from generated output
 
-Example local install and use:
+Historical template example only:
 
 ```bash
-dotnet new install /absolute/path/to/canonical-dotnet-skeleton
+# Historical only; do not use as current setup guidance.
+dotnet new install /absolute/path/to/legacy-template
 dotnet new graphode-microservice \
   --ServiceName Acme.Catalog.Service \
   --RootNamespace Acme.Catalog.Service \
   --ServiceSlug catalog-service \
   -o acme-catalog-service
 ```
+
+This block is retained only as legacy template reference and does not describe the current billing entitlements service boundary.
 
 Placeholders replaced by the template:
 

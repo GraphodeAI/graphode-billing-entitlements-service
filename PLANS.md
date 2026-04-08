@@ -1,39 +1,22 @@
-# Canonical .NET Skeleton Plan
+# Billing Entitlements Service Plan
 
 ## Current objective
 
-Create the canonical Graphode .NET 10 microservice skeleton baseline with:
-
-- one reference service
-- local baseline-only support projects
-- MongoDB integration
-- repository pattern
-- read DTOs with filtering, sorting, paging
-- command, PEM and event models
-- RabbitMQ producer and command consumer support
-- Redis-compatible cache and operational state support
-- internal-only HTTP client baseline without mTLS assumptions
-- Helm and Terraform deployment scaffolding
-- deterministic startup/configuration wiring
-- health checks
-- machine-readable JSON contracts
-- lightweight helper SSOT notes
+Keep the Stripe-backed billing entitlements service honest and resumable. The repo now owns real billing workspace snapshots, payment-method capture, subscriptions, ledger behavior and webhook reconciliation.
 
 ## Guardrails
 
 - No shared kernel.
 - No shared runtime contracts package for future services.
-- No fake business logic.
+- No fake billing state.
 - No placeholder runtime behavior.
 - No service mesh theater.
-- No mTLS-dependent abstractions.
-- Keep structure copy-forward friendly.
+- Keep Stripe boundaries explicit and service-local.
 
 ## Planned work
 
-1. Create solution structure and repo-local documentation.
-2. Implement contracts, DTOs, envelopes and JSON contract generation.
-3. Implement reference domain, application services and API endpoints.
-4. Implement Mongo, Redis, RabbitMQ and internal HTTP infrastructure patterns.
-5. Add health checks, JSON contract generation, Helm/Terraform scaffolding, tests, README and helper SSOT outputs.
-6. Build, test, smoke-check and publish to GitHub.
+1. Keep payment-method setup-intent and subscription flows wired to the live Stripe boundary.
+2. Keep webhook reconciliation and workspace snapshot persistence aligned with the edge gateway route.
+3. Keep ledger and plan responses consistent with the persisted billing account state.
+4. Clean up any stale scaffold text or repo-local drift before closure.
+5. Build, test and smoke-check any billing change against the real gateway path.

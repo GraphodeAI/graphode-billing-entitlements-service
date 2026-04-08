@@ -2,31 +2,36 @@
 
 ## Scope
 
-This run creates a baseline/template repository, not a business microservice.
+This repository now owns the real billing entitlements service boundary for Graphode. The current run is about keeping the Stripe-backed commercial substrate honest, not about a template scaffold.
 
 ## Target artifacts
 
-- `Graphode.BillingEntitlementsService.sln`
-- reference service with minimal end-to-end example
-- local contracts and contract generator projects
-- helper SSOT folder with changelog, contracts and reuse notes
+- billing workspace snapshot store
+- Stripe setup-intent / payment-method capture
+- subscription start/change/cancel
+- signed Stripe webhook reconciliation
+- ledger and plan surfaces exposed through the gateway
 
 ## Concrete runtime paths in this run
 
-- HTTP read path: list reference items with paging, filtering and sorting
-- HTTP write path: create reference item and publish event
-- Async command path: archive command consumed from RabbitMQ and handled in application layer
-- Redis cache path: list endpoint cache and workspace cache invalidation
-- Redis operational-state path: reusable backing store for refresh/session/ephemeral state
-- Internal HTTP path: named internal service clients with correlation/context propagation over private network
-- Contract path: generate JSON schemas from DTO/message contracts into helper SSOT output
-- Deployment path: reusable Helm/Terraform baseline for DigitalOcean-hosted Kubernetes services
+- billing plans query -> gateway -> service-local plan catalog
+- setup-intent creation -> Stripe -> payment-method capture
+- subscription start/change/cancel -> workspace billing account persistence
+- signed webhook event -> reconciliation -> account/subscription update
+- ledger query -> reserve/commit/release -> append-only workspace billing history
 
 ## Acceptance evidence to produce
 
 - `dotnet build`
 - `dotnet test`
-- `dotnet run --project ...ContractGenerator...`
-- `helm lint` or an explicit record if Helm CLI is unavailable
-- `terraform fmt -check` and `terraform validate`
-- generated JSON files present under `helper-ssot/contracts`
+- live gateway smoke for `/api/v1/billing/plans`
+- live gateway smoke for `/api/v1/workspaces/{workspaceId}/billing-account`
+- live Stripe payment-method and subscription proof
+- signed webhook reconciliation proof
+
+## Current status
+
+- Stripe-backed payment-method and subscription flow is live
+- Mongo-backed workspace snapshot persistence is live
+- webhook reconciliation is live through the edge gateway
+- remaining work is cleanup and hardening, not scaffold completion
