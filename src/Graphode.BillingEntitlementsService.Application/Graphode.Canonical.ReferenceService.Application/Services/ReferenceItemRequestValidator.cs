@@ -30,7 +30,7 @@ public sealed class ReferenceItemRequestValidator
 
         if (request.Tags.Count > 10)
         {
-            throw new ContractValidationException(["At most 10 tags are allowed in the baseline example."]);
+            throw new ContractValidationException(["At most 10 tags are allowed for a reference item."]);
         }
     }
 
@@ -62,12 +62,12 @@ public sealed class ReferenceItemRequestValidator
 
             if (filter.Operator == FilterOperator.Contains && !string.Equals(filter.Field, "name", StringComparison.OrdinalIgnoreCase))
             {
-                errors.Add($"Operator '{FilterOperator.Contains}' is only supported for the 'name' field in the baseline.");
+                errors.Add($"Operator '{FilterOperator.Contains}' is only supported for the 'name' field in this contract.");
             }
 
             if (filter.Operator == FilterOperator.StartsWith && !string.Equals(filter.Field, "name", StringComparison.OrdinalIgnoreCase))
             {
-                errors.Add($"Operator '{FilterOperator.StartsWith}' is only supported for the 'name' field in the baseline.");
+                errors.Add($"Operator '{FilterOperator.StartsWith}' is only supported for the 'name' field in this contract.");
             }
         }
 

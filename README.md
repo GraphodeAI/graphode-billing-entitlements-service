@@ -217,5 +217,5 @@ What they should not add:
 
 - dependency on a central shared kernel
 - dependency on a forever-shared contracts runtime package
-- fake placeholder runtime paths
+- historical placeholder runtime paths from the original scaffold
 - mTLS-coupled abstractions as a baseline assumption
